@@ -1,0 +1,9 @@
+{
+  "name": "bnh/ats",
+  "description": "BNH QR Attendance System",
+  "type": "project",
+  "require": {
+    "tecnickcom/tcpdf": "^6.7",
+    "phpoffice/phpspreadsheet": "^2.1"
+  }
+}

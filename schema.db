@@ -1,0 +1,179 @@
+CREATE DATABASE IF NOT EXISTS attendance_system
+  CHARACTER SET utf8mb4
+  COLLATE utf8mb4_unicode_ci;
+
+USE attendance_system;
+
+CREATE TABLE IF NOT EXISTS teachers (
+  teacher_id INT AUTO_INCREMENT PRIMARY KEY,
+  employee_id VARCHAR(20) NOT NULL,
+  first_name VARCHAR(50) NOT NULL,
+  middle_name VARCHAR(50) NULL,
+  last_name VARCHAR(50) NOT NULL,
+  suffix VARCHAR(20) NULL,
+  sex ENUM('Male','Female') NOT NULL,
+  email VARCHAR(100) NOT NULL,
+  password_hash VARCHAR(255) NOT NULL,
+  department VARCHAR(50) NULL,
+  grade_levels_taught VARCHAR(32) NULL,
+  role ENUM('Teacher','Admin') NOT NULL DEFAULT 'Teacher',
+  status ENUM('Active','Inactive') NOT NULL DEFAULT 'Active',
+  approval_status ENUM('Pending','Approved','Declined') NOT NULL DEFAULT 'Approved',
+  approved_by INT NULL,
+  approved_at DATETIME NULL,
+  failed_login_attempts TINYINT UNSIGNED NOT NULL DEFAULT 0,
+  lockout_until DATETIME NULL,
+  last_login_at DATETIME NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_teachers_employee_id (employee_id),
+  UNIQUE KEY uq_teachers_email (email),
+  INDEX idx_teachers_status (status),
+  INDEX idx_teachers_role (role),
+  INDEX idx_teachers_approval_status (approval_status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+
+CREATE TABLE IF NOT EXISTS grade_sections (
+  grade_section_id INT AUTO_INCREMENT PRIMARY KEY,
+  grade_level TINYINT NOT NULL,
+  section VARCHAR(20) NOT NULL,
+  status ENUM('Active','Inactive') NOT NULL DEFAULT 'Active',
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_grade_sections (grade_level, section),
+  INDEX idx_grade_sections_grade (grade_level),
+  INDEX idx_grade_sections_status (status),
+  CHECK (grade_level BETWEEN 7 AND 12)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS students (
+  student_id INT AUTO_INCREMENT PRIMARY KEY,
+  lrn VARCHAR(12) NOT NULL,
+  first_name VARCHAR(50) NOT NULL,
+  middle_name VARCHAR(50) NULL,
+  last_name VARCHAR(50) NOT NULL,
+  suffix VARCHAR(20) NULL,
+  sex ENUM('Male','Female') NOT NULL,
+  grade_level TINYINT NOT NULL,
+  section VARCHAR(20) NOT NULL,
+  contact_number VARCHAR(15) NULL,
+  email VARCHAR(100) NULL,
+  qr_token VARCHAR(64) NOT NULL,
+  status ENUM('Active','Inactive','Graduated') NOT NULL DEFAULT 'Active',
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CHECK (grade_level BETWEEN 7 AND 12),
+  UNIQUE KEY uq_students_lrn (lrn),
+  UNIQUE KEY uq_students_qr_token (qr_token),
+  INDEX idx_students_grade_section (grade_level, section),
+  INDEX idx_students_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS schedules (
+  schedule_id INT AUTO_INCREMENT PRIMARY KEY,
+  teacher_id INT NOT NULL,
+  subject_name VARCHAR(100) NOT NULL,
+  grade_level TINYINT NOT NULL,
+  section VARCHAR(20) NOT NULL,
+  day_of_week ENUM('Monday','Tuesday','Wednesday','Thursday','Friday') NOT NULL,
+  start_time TIME NOT NULL,
+  end_time TIME NOT NULL,
+  room VARCHAR(50) NULL,
+  semester ENUM('1st','2nd') NULL,
+  school_year VARCHAR(9) NOT NULL,
+  status ENUM('Active','Inactive','Archived') NOT NULL DEFAULT 'Active',
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CHECK (grade_level BETWEEN 7 AND 12),
+  CHECK (end_time > start_time),
+  CONSTRAINT fk_schedules_teacher FOREIGN KEY (teacher_id) REFERENCES teachers (teacher_id) ON DELETE RESTRICT,
+  INDEX idx_schedules_teacher (teacher_id),
+  INDEX idx_schedules_grade_section (grade_level, section),
+  INDEX idx_schedules_day_time (day_of_week, start_time),
+  INDEX idx_schedules_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS student_schedules (
+  enrollment_id INT AUTO_INCREMENT PRIMARY KEY,
+  student_id INT NOT NULL,
+  schedule_id INT NOT NULL,
+  enrolled_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  status ENUM('Active','Dropped') NOT NULL DEFAULT 'Active',
+  CONSTRAINT fk_student_schedules_student FOREIGN KEY (student_id) REFERENCES students (student_id) ON DELETE CASCADE,
+  CONSTRAINT fk_student_schedules_schedule FOREIGN KEY (schedule_id) REFERENCES schedules (schedule_id) ON DELETE CASCADE,
+  UNIQUE KEY uq_student_schedules (student_id, schedule_id),
+  INDEX idx_student_schedules_student (student_id),
+  INDEX idx_student_schedules_schedule (schedule_id),
+  INDEX idx_student_schedules_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS attendance_sessions (
+  session_id INT AUTO_INCREMENT PRIMARY KEY,
+  teacher_id INT NOT NULL,
+  schedule_id INT NOT NULL,
+  session_date DATE NOT NULL,
+  started_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  ended_at DATETIME NULL,
+  status ENUM('Active','Ended') NOT NULL DEFAULT 'Active',
+  CONSTRAINT fk_attendance_sessions_teacher FOREIGN KEY (teacher_id) REFERENCES teachers (teacher_id) ON DELETE RESTRICT,
+  CONSTRAINT fk_attendance_sessions_schedule FOREIGN KEY (schedule_id) REFERENCES schedules (schedule_id) ON DELETE RESTRICT,
+  INDEX idx_attendance_sessions_teacher_status (teacher_id, status),
+  INDEX idx_attendance_sessions_schedule_date (schedule_id, session_date)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS attendance (
+  attendance_id INT AUTO_INCREMENT PRIMARY KEY,
+  student_id INT NOT NULL,
+  schedule_id INT NOT NULL,
+  teacher_id INT NOT NULL,
+  date DATE NOT NULL,
+  time_scanned TIME NULL,
+  status ENUM('Present','Late','Absent') NOT NULL,
+  remarks TEXT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT fk_attendance_student FOREIGN KEY (student_id) REFERENCES students (student_id) ON DELETE RESTRICT,
+  CONSTRAINT fk_attendance_schedule FOREIGN KEY (schedule_id) REFERENCES schedules (schedule_id) ON DELETE RESTRICT,
+  CONSTRAINT fk_attendance_teacher FOREIGN KEY (teacher_id) REFERENCES teachers (teacher_id) ON DELETE RESTRICT,
+  UNIQUE KEY uq_attendance_daily (student_id, schedule_id, date),
+  INDEX idx_attendance_student (student_id),
+  INDEX idx_attendance_schedule (schedule_id),
+  INDEX idx_attendance_teacher (teacher_id),
+  INDEX idx_attendance_date (date),
+  INDEX idx_attendance_status (status),
+  INDEX idx_attendance_student_date (student_id, date)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS attendance_day_scanning (
+  scan_date DATE PRIMARY KEY,
+  status ENUM('Active','Ended') NOT NULL DEFAULT 'Active',
+  late_threshold_minutes INT NOT NULL DEFAULT 0,
+  absent_threshold_minutes INT NOT NULL DEFAULT 0,
+  late_threshold_enabled TINYINT(1) NOT NULL DEFAULT 1,
+  absent_threshold_enabled TINYINT(1) NOT NULL DEFAULT 1,
+  started_by INT NOT NULL,
+  started_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  ended_at DATETIME NULL,
+  CONSTRAINT fk_attendance_day_scanning_started_by FOREIGN KEY (started_by) REFERENCES teachers (teacher_id) ON DELETE RESTRICT,
+  INDEX idx_attendance_day_scanning_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS audit_log (
+  log_id INT AUTO_INCREMENT PRIMARY KEY,
+  user_type ENUM('Teacher','Admin') NOT NULL,
+  user_id INT NOT NULL,
+  action VARCHAR(50) NOT NULL,
+  table_name VARCHAR(50) NOT NULL,
+  record_id INT NULL,
+  old_value TEXT NULL,
+  new_value TEXT NULL,
+  ip_address VARCHAR(45) NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_audit_user (user_type, user_id),
+  INDEX idx_audit_table (table_name),
+  INDEX idx_audit_created_at (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+
+INSERT INTO `teachers` (`teacher_id`, `employee_id`, `first_name`, `middle_name`, `last_name`, `suffix`, `sex`, `email`, `password_hash`, `department`, `grade_levels_taught`, `role`, `status`, `failed_login_attempts`, `lockout_until`, `last_login_at`, `created_at`, `updated_at`, `approval_status`, `approved_by`, `approved_at`) VALUES (NULL, '100', 'Admin', NULL, 'Bicos', NULL, 'Male', 'admin@gmail.com', '$2y$12$PTEx28TcJ0hx1FKcZjl2/OJQYb1dhyiU09WDsppSNzgMelA5WKr7.', NULL, NULL, 'Admin', 'Active', '0', NULL, '2026-01-30 16:20:48', '2026-01-28 23:29:44', '2026-01-30 16:20:49', 'Approved', NULL, NULL);
