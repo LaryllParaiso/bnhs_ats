@@ -612,7 +612,26 @@ h1,h2,h3,h4,h5{
 }
 
 .bnhs-scan-notice{
-  min-height:74px;
+  position:fixed;
+  left:20px;
+  bottom:20px;
+  z-index:1055;
+  width:calc(100% - 40px);
+  max-width:640px;
+  min-height:0;
+  pointer-events:none;
+}
+
+.bnhs-scan-notice:empty{
+  display:none;
+}
+
+@media (max-width: 576px){
+  .bnhs-scan-notice{
+    left:12px;
+    bottom:12px;
+    width:calc(100% - 24px);
+  }
 }
 
 .bnhs-scan-card{
@@ -667,6 +686,17 @@ h1,h2,h3,h4,h5{
 
 .bnhs-scan-card.warning .bnhs-scan-icon{
   background:#b08800;
+  color:#fff;
+}
+
+.bnhs-scan-card.orange{
+  background:#ffe6c7;
+  border-left-color:#f08c00;
+  color:#8a4f00;
+}
+
+.bnhs-scan-card.orange .bnhs-scan-icon{
+  background:#d97706;
   color:#fff;
 }
 

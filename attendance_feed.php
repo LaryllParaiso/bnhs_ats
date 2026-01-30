@@ -11,6 +11,22 @@ header('Content-Type: application/json; charset=utf-8');
 $teacherId = (int)$_SESSION['teacher_id'];
 $sessionId = (int)($_GET['session_id'] ?? 0);
 
+$q = trim((string)($_GET['q'] ?? ''));
+$page = (int)($_GET['page'] ?? 1);
+$perPage = (int)($_GET['per_page'] ?? 50);
+
+if ($page < 1) {
+    $page = 1;
+}
+if ($perPage < 5) {
+    $perPage = 5;
+}
+if ($perPage > 200) {
+    $perPage = 200;
+}
+
+$offset = ($page - 1) * $perPage;
+
 if ($sessionId <= 0) {
     echo json_encode(['ok' => false, 'message' => 'Invalid session']);
     exit;
@@ -35,22 +51,81 @@ $stmt = $pdo->prepare(
      FROM student_schedules
      WHERE schedule_id = :schedule_id AND status = "Active"'
 );
-$stmt->execute([':schedule_id' => $scheduleId]);
-$enrolled = (int)($stmt->fetch()['cnt'] ?? 0);
+try {
+    $ok = $stmt->execute([':schedule_id' => $scheduleId]);
+    if (!$ok) {
+        echo json_encode(['ok' => false, 'message' => 'Failed to load scans']);
+        exit;
+    }
+    $row = $stmt->fetch();
+    $enrolled = (int)(is_array($row) ? ($row['cnt'] ?? 0) : 0);
+} catch (Throwable $e) {
+    echo json_encode(['ok' => false, 'message' => 'Failed to load scans']);
+    exit;
+}
+
+$where =
+    'WHERE a.schedule_id = :schedule_id
+      AND a.teacher_id = :teacher_id
+      AND a.date = :date
+      AND a.status IN ("Present","Late")';
+
+$params = [
+    ':schedule_id' => $scheduleId,
+    ':teacher_id' => $teacherId,
+    ':date' => $sessionDate,
+];
+
+if ($q !== '') {
+    $where .= ' AND (LOWER(st.first_name) LIKE :q1 OR LOWER(st.last_name) LIKE :q2 OR LOWER(CONCAT(st.first_name, \' \', st.last_name)) LIKE :q3 OR LOWER(st.lrn) LIKE :q4)';
+    $like = '%' . strtolower($q) . '%';
+    $params[':q1'] = $like;
+    $params[':q2'] = $like;
+    $params[':q3'] = $like;
+    $params[':q4'] = $like;
+}
+
+$stmt = $pdo->prepare(
+    'SELECT COUNT(*) AS cnt
+     FROM attendance a
+     JOIN students st ON st.student_id = a.student_id
+     ' . $where
+);
+try {
+    $ok = $stmt->execute($params);
+    if (!$ok) {
+        echo json_encode(['ok' => false, 'message' => 'Failed to load scans']);
+        exit;
+    }
+    $row = $stmt->fetch();
+    $totalItems = (int)(is_array($row) ? ($row['cnt'] ?? 0) : 0);
+} catch (Throwable $e) {
+    echo json_encode(['ok' => false, 'message' => 'Failed to load scans']);
+    exit;
+}
 
 $stmt = $pdo->prepare(
     'SELECT a.time_scanned, a.status, st.lrn, st.first_name, st.last_name, st.suffix
      FROM attendance a
      JOIN students st ON st.student_id = a.student_id
-     WHERE a.schedule_id = :schedule_id
-       AND a.teacher_id = :teacher_id
-       AND a.date = :date
-       AND a.status IN ("Present","Late")
+     ' . $where . '
      ORDER BY a.time_scanned DESC
-     LIMIT 50'
+     LIMIT ' . $offset . ', ' . $perPage
 );
-$stmt->execute([':schedule_id' => $scheduleId, ':teacher_id' => $teacherId, ':date' => $sessionDate]);
-$rows = $stmt->fetchAll();
+foreach ($params as $k => $v) {
+    $stmt->bindValue($k, $v);
+}
+try {
+    $ok = $stmt->execute();
+    if (!$ok) {
+        echo json_encode(['ok' => false, 'message' => 'Failed to load scans']);
+        exit;
+    }
+    $rows = $stmt->fetchAll();
+} catch (Throwable $e) {
+    echo json_encode(['ok' => false, 'message' => 'Failed to load scans']);
+    exit;
+}
 
 $stmt = $pdo->prepare(
     'SELECT
@@ -62,8 +137,17 @@ $stmt = $pdo->prepare(
        AND date = :date
        AND status IN ("Present","Late")'
 );
-$stmt->execute([':schedule_id' => $scheduleId, ':teacher_id' => $teacherId, ':date' => $sessionDate]);
-$agg = $stmt->fetch();
+try {
+    $ok = $stmt->execute([':schedule_id' => $scheduleId, ':teacher_id' => $teacherId, ':date' => $sessionDate]);
+    if (!$ok) {
+        echo json_encode(['ok' => false, 'message' => 'Failed to load scans']);
+        exit;
+    }
+    $agg = $stmt->fetch();
+} catch (Throwable $e) {
+    echo json_encode(['ok' => false, 'message' => 'Failed to load scans']);
+    exit;
+}
 
 $items = [];
 $present = (int)($agg['present'] ?? 0);
@@ -92,6 +176,13 @@ echo json_encode([
         'present' => $present,
         'late' => $late,
         'enrolled' => $enrolled,
+    ],
+    'pagination' => [
+        'q' => $q,
+        'page' => $page,
+        'per_page' => $perPage,
+        'total_items' => $totalItems,
+        'total_pages' => $perPage > 0 ? (int)ceil($totalItems / $perPage) : 1,
     ],
     'items' => $items,
 ]);

@@ -48,26 +48,21 @@ If your repo does not include `vendor/`:
 - Run in the project root:
   - `composer install`
 
+## Default Admin Account
+
+- Email: `admin@gmail.com`
+- Password: `Bicos@123`
+
+For security, change the default password after first login.
+
 ## Run the app
 
 - Visit:
   - `http://localhost/BNH_ATS/login.php`
 
-## Create the first Admin account
+## Usage Guide
 
-There is no default admin user.
-
-Recommended approach:
-
-1) Register a teacher account:
-- `http://localhost/BNH_ATS/register.php`
-
-2) In phpMyAdmin, open table `teachers` and update that user:
-- `role` = `Admin`
-- `status` = `Active`
-- `approval_status` = `Approved`
-
-Then you can login normally.
+See `USER_GUIDE.md` for the step-by-step workflow (Admin -> Teacher schedules -> Student registration -> Scanning).
 
 ## Notes / Troubleshooting
 

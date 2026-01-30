@@ -138,6 +138,14 @@ require __DIR__ . '/partials/layout_top.php';
             <tbody id="scanRows"></tbody>
           </table>
         </div>
+
+        <div class="d-flex justify-content-between align-items-center mt-2">
+          <div class="text-muted small" id="scanPagerInfo"></div>
+          <div class="btn-group btn-group-sm" role="group" aria-label="Scan list pagination">
+            <button type="button" class="btn btn-outline-secondary" id="scanPrev">Prev</button>
+            <button type="button" class="btn btn-outline-secondary" id="scanNext">Next</button>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -160,6 +168,39 @@ require __DIR__ . '/partials/layout_top.php';
   const chkDisableFlip = document.getElementById('chkDisableFlip');
   const lastDecodedEl = document.getElementById('lastDecoded');
   const searchEl = document.getElementById('scanSearch');
+  const pagerInfoEl = document.getElementById('scanPagerInfo');
+  const btnPrev = document.getElementById('scanPrev');
+  const btnNext = document.getElementById('scanNext');
+
+  const ALERT_HIDE_MS = 3000;
+  let alertHideTimer = null;
+
+  const RESCAN_COOLDOWN_MS = 3000;
+  let lastOkQrText = '';
+  let lastOkAt = 0;
+
+  const FEED_PER_PAGE = 20;
+  let feedPage = 1;
+  let feedTotalPages = 1;
+  let feedQuery = '';
+
+  let feedReqSeq = 0;
+  let feedAbort = null;
+  let searchDebounceTimer = null;
+
+  function clearScanCard() {
+    if (!alertEl) return;
+    alertEl.innerHTML = '';
+  }
+
+  function scheduleHideScanCard() {
+    if (alertHideTimer) {
+      window.clearTimeout(alertHideTimer);
+    }
+    alertHideTimer = window.setTimeout(function () {
+      clearScanCard();
+    }, ALERT_HIDE_MS);
+  }
 
   let lastItems = [];
 
@@ -174,6 +215,9 @@ require __DIR__ . '/partials/layout_top.php';
 
   function iconSvg(kind) {
     if (kind === 'success') {
+      return '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9.0 16.2 4.8 12 3.4 13.4 9.0 19 21 7 19.6 5.6 9.0 16.2Z" fill="currentColor"/></svg>';
+    }
+    if (kind === 'orange') {
       return '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9.0 16.2 4.8 12 3.4 13.4 9.0 19 21 7 19.6 5.6 9.0 16.2Z" fill="currentColor"/></svg>';
     }
     if (kind === 'warning') {
@@ -194,6 +238,8 @@ require __DIR__ . '/partials/layout_top.php';
           (safeSub ? ('<div class="bnhs-scan-sub">' + safeSub + '</div>') : '') +
         '</div>' +
       '</div>';
+
+    scheduleHideScanCard();
   }
 
   function showAlert(type, msg) {
@@ -219,15 +265,9 @@ require __DIR__ . '/partials/layout_top.php';
   function renderRows() {
     const rowsEl = document.getElementById('scanRows');
     if (!rowsEl) return;
-    const q = String((searchEl && searchEl.value) ? searchEl.value : '').trim().toLowerCase();
-
     rowsEl.innerHTML = '';
     (lastItems || []).forEach(function (r) {
       const nm = String(r.name || '');
-      if (q && nm.toLowerCase().indexOf(q) === -1) {
-        return;
-      }
-
       const sec = (r.grade_level ? (r.grade_level + '-') : '') + (r.section || '');
       const tr = document.createElement('tr');
       tr.innerHTML =
@@ -236,6 +276,15 @@ require __DIR__ . '/partials/layout_top.php';
         '<td>' + escapeHtml(sec) + '</td>';
       rowsEl.appendChild(tr);
     });
+  }
+
+  function renderPager() {
+    const totalPages = feedTotalPages || 1;
+    if (btnPrev) btnPrev.disabled = feedPage <= 1;
+    if (btnNext) btnNext.disabled = feedPage >= totalPages;
+    if (pagerInfoEl) {
+      pagerInfoEl.textContent = 'Page ' + feedPage + ' of ' + totalPages;
+    }
   }
 
   async function readJsonResponse(res) {
@@ -249,19 +298,41 @@ require __DIR__ . '/partials/layout_top.php';
   }
 
   async function refreshFeed() {
+    const mySeq = ++feedReqSeq;
     let data = null;
     try {
-      const res = await fetch(<?= json_encode(url('attendance_day_feed.php')) ?>, {
+      const url = <?= json_encode(url('attendance_day_feed.php')) ?> +
+        '?page=' + encodeURIComponent(feedPage) +
+        '&per_page=' + encodeURIComponent(FEED_PER_PAGE) +
+        '&q=' + encodeURIComponent(feedQuery);
+
+      if (feedAbort && typeof feedAbort.abort === 'function') {
+        feedAbort.abort();
+      }
+      feedAbort = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+
+      const res = await fetch(url, {
         cache: 'no-store',
-        headers: { 'Accept': 'application/json' }
+        headers: { 'Accept': 'application/json' },
+        signal: feedAbort ? feedAbort.signal : undefined
       });
       data = await readJsonResponse(res);
     } catch (e) {
+      if (mySeq !== feedReqSeq) {
+        return;
+      }
       document.getElementById('cntPresent').textContent = '0';
       document.getElementById('cntLate').textContent = '0';
       document.getElementById('cntTotal').textContent = '0';
+      feedTotalPages = 1;
+      feedPage = 1;
       lastItems = [];
       renderRows();
+      renderPager();
+      return;
+    }
+
+    if (mySeq !== feedReqSeq) {
       return;
     }
 
@@ -269,8 +340,11 @@ require __DIR__ . '/partials/layout_top.php';
       document.getElementById('cntPresent').textContent = '0';
       document.getElementById('cntLate').textContent = '0';
       document.getElementById('cntTotal').textContent = '0';
+      feedTotalPages = 1;
+      feedPage = 1;
       lastItems = [];
       renderRows();
+      renderPager();
       return;
     }
 
@@ -279,7 +353,11 @@ require __DIR__ . '/partials/layout_top.php';
     document.getElementById('cntTotal').textContent = data.counts ? (data.counts.total || 0) : 0;
 
     lastItems = data.items || [];
+    feedTotalPages = (data.pagination && data.pagination.total_pages) ? parseInt(data.pagination.total_pages, 10) : 1;
+    if (!feedTotalPages || feedTotalPages < 1) feedTotalPages = 1;
+    if (feedPage > feedTotalPages) feedPage = feedTotalPages;
     renderRows();
+    renderPager();
   }
 
   cameraSelect.innerHTML = '<option value="">Default camera</option>';
@@ -326,9 +404,26 @@ require __DIR__ . '/partials/layout_top.php';
       return;
     }
 
+    lastOkQrText = qrText;
+    lastOkAt = Date.now();
+
+    if (data.already_scanned) {
+      showScanCard('orange', 'QR CODE IS ALREADY SCANNED', '');
+      txtEl.value = '';
+      await refreshFeed();
+      return;
+    }
+
     const st = String(data.status || '').toLowerCase();
     const nm = data.student && data.student.name ? String(data.student.name) : '';
     const sched = data.schedule ? String(data.schedule) : '';
+
+    if (!nm) {
+      showAlert('success', data.message || 'Recorded');
+      txtEl.value = '';
+      await refreshFeed();
+      return;
+    }
 
     if (st === 'late') {
       showScanCard('warning', 'WELCOME ' + nm, sched);
@@ -349,12 +444,43 @@ require __DIR__ . '/partials/layout_top.php';
   let html5Qr = null;
   let isProcessing = false;
 
+  function isLikelySecureContextForCamera() {
+    const host = String((window.location && window.location.hostname) ? window.location.hostname : '');
+    if (host === 'localhost' || host === '127.0.0.1' || host === '::1') {
+      return true;
+    }
+    return !!(window.isSecureContext);
+  }
+
+  function formatCameraErrorHint(err) {
+    if (!isLikelySecureContextForCamera()) {
+      return 'Camera access requires HTTPS when opening via IP on mobile (e.g., https://192.168.x.x).';
+    }
+
+    const name = (err && err.name) ? String(err.name) : '';
+    if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
+      return 'Camera permission was blocked. Please allow camera access in your browser settings.';
+    }
+    if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
+      return 'No camera device found.';
+    }
+    if (name === 'NotReadableError' || name === 'TrackStartError') {
+      return 'Camera is busy or cannot be started. Close other apps using the camera and try again.';
+    }
+    return '';
+  }
+
   document.getElementById('btnStart').addEventListener('click', async function () {
     if (!isActive) return;
     if (html5Qr) return;
 
     if (typeof Html5Qrcode === 'undefined') {
       showAlert('danger', 'Scanner library failed to load. Please refresh the page and check your internet connection.');
+      return;
+    }
+
+    if (!isLikelySecureContextForCamera()) {
+      showAlert('danger', 'Camera access is blocked on mobile when opened via IP over HTTP. Please use HTTPS for this site (e.g., https://192.168.x.x) or open it on the same device as the server using localhost.');
       return;
     }
 
@@ -374,6 +500,10 @@ require __DIR__ . '/partials/layout_top.php';
         source,
         { fps: 12, qrbox: qrbox, disableFlip: !!(chkDisableFlip && chkDisableFlip.checked) },
         function (decodedText) {
+          const now = Date.now();
+          if (decodedText && decodedText === lastOkQrText && (now - lastOkAt) < RESCAN_COOLDOWN_MS) {
+            return;
+          }
           if (isProcessing) {
             return;
           }
@@ -394,7 +524,9 @@ require __DIR__ . '/partials/layout_top.php';
     } catch (e) {
       html5Qr = null;
       const msg = (e && e.message) ? e.message : '';
-      showAlert('danger', 'Camera start failed' + (msg ? (': ' + msg) : ''));
+      const hint = formatCameraErrorHint(e);
+      const fullMsg = 'Camera start failed' + (msg ? (': ' + msg) : '') + (hint ? (' ' + hint) : '');
+      showAlert('danger', fullMsg);
     }
   });
 
@@ -411,11 +543,41 @@ require __DIR__ . '/partials/layout_top.php';
   });
 
   refreshFeed();
-  setInterval(refreshFeed, 2000);
+  setInterval(function () {
+    if (feedPage === 1 && feedQuery === '') {
+      refreshFeed();
+    }
+  }, 2000);
 
   if (searchEl) {
     searchEl.addEventListener('input', function () {
-      renderRows();
+      feedQuery = String(searchEl.value || '').trim();
+      feedPage = 1;
+
+      if (searchDebounceTimer) {
+        window.clearTimeout(searchDebounceTimer);
+      }
+      searchDebounceTimer = window.setTimeout(function () {
+        refreshFeed();
+      }, 250);
+    });
+  }
+
+  if (btnPrev) {
+    btnPrev.addEventListener('click', function () {
+      if (feedPage > 1) {
+        feedPage -= 1;
+        refreshFeed();
+      }
+    });
+  }
+
+  if (btnNext) {
+    btnNext.addEventListener('click', function () {
+      if (feedPage < feedTotalPages) {
+        feedPage += 1;
+        refreshFeed();
+      }
     });
   }
 })();

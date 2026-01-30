@@ -13,12 +13,15 @@ ini_set('session.use_strict_mode', '1');
 ini_set('session.cookie_httponly', '1');
 ini_set('session.use_only_cookies', '1');
 
+$isHttps = (!empty($_SERVER['HTTPS']) && strtolower((string)$_SERVER['HTTPS']) !== 'off')
+    || ((int)($_SERVER['SERVER_PORT'] ?? 0) === 443);
+
 $cookieParams = session_get_cookie_params();
 session_set_cookie_params([
     'lifetime' => 0,
     'path' => $cookieParams['path'] ?? '/',
     'domain' => $cookieParams['domain'] ?? '',
-    'secure' => false,
+    'secure' => $isHttps,
     'httponly' => true,
     'samesite' => 'Lax',
 ]);

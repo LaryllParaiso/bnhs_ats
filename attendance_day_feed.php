@@ -10,6 +10,22 @@ header('Content-Type: application/json; charset=utf-8');
 
 $pdo = db();
 
+$q = trim((string)($_GET['q'] ?? ''));
+$page = (int)($_GET['page'] ?? 1);
+$perPage = (int)($_GET['per_page'] ?? 20);
+
+if ($page < 1) {
+    $page = 1;
+}
+if ($perPage < 5) {
+    $perPage = 5;
+}
+if ($perPage > 200) {
+    $perPage = 200;
+}
+
+$offset = ($page - 1) * $perPage;
+
 $pdo->exec(
     'CREATE TABLE IF NOT EXISTS attendance_day_scanning (
         scan_date DATE PRIMARY KEY,
@@ -106,8 +122,48 @@ $stmt = $pdo->prepare(
      FROM attendance a
      WHERE a.date = CURDATE()'
 );
-$stmt->execute();
-$counts = $stmt->fetch() ?: [];
+try {
+    $ok = $stmt->execute();
+    if (!$ok) {
+        echo json_encode(['ok' => false, 'message' => 'Failed to load scans']);
+        exit;
+    }
+    $counts = $stmt->fetch() ?: [];
+} catch (Throwable $e) {
+    echo json_encode(['ok' => false, 'message' => 'Failed to load scans']);
+    exit;
+}
+
+$where = 'WHERE a.date = CURDATE() AND a.time_scanned IS NOT NULL';
+$params = [];
+if ($q !== '') {
+    $where .= ' AND (LOWER(st.first_name) LIKE :q1 OR LOWER(st.last_name) LIKE :q2 OR LOWER(CONCAT(st.first_name, \' \', st.last_name)) LIKE :q3 OR LOWER(st.lrn) LIKE :q4)';
+    $like = '%' . strtolower($q) . '%';
+    $params[':q1'] = $like;
+    $params[':q2'] = $like;
+    $params[':q3'] = $like;
+    $params[':q4'] = $like;
+}
+
+$stmt = $pdo->prepare(
+    'SELECT COUNT(*) AS cnt
+     FROM attendance a
+     JOIN students st ON st.student_id = a.student_id
+     JOIN schedules sch ON sch.schedule_id = a.schedule_id
+     ' . $where
+);
+try {
+    $ok = $stmt->execute($params);
+    if (!$ok) {
+        echo json_encode(['ok' => false, 'message' => 'Failed to load scans']);
+        exit;
+    }
+    $row = $stmt->fetch();
+    $totalItems = (int)(is_array($row) ? ($row['cnt'] ?? 0) : 0);
+} catch (Throwable $e) {
+    echo json_encode(['ok' => false, 'message' => 'Failed to load scans']);
+    exit;
+}
 
 $stmt = $pdo->prepare(
     'SELECT a.time_scanned, a.status,
@@ -116,13 +172,24 @@ $stmt = $pdo->prepare(
      FROM attendance a
      JOIN students st ON st.student_id = a.student_id
      JOIN schedules sch ON sch.schedule_id = a.schedule_id
-     WHERE a.date = CURDATE()
-       AND a.time_scanned IS NOT NULL
+     ' . $where . '
      ORDER BY a.time_scanned DESC, a.attendance_id DESC
-     LIMIT 20'
+     LIMIT ' . $offset . ', ' . $perPage
 );
-$stmt->execute();
-$rows = $stmt->fetchAll();
+foreach ($params as $k => $v) {
+    $stmt->bindValue($k, $v);
+}
+try {
+    $ok = $stmt->execute();
+    if (!$ok) {
+        echo json_encode(['ok' => false, 'message' => 'Failed to load scans']);
+        exit;
+    }
+    $rows = $stmt->fetchAll();
+} catch (Throwable $e) {
+    echo json_encode(['ok' => false, 'message' => 'Failed to load scans']);
+    exit;
+}
 
 $items = [];
 foreach ($rows as $r) {
@@ -149,6 +216,13 @@ echo json_encode([
         'present' => (int)($counts['present'] ?? 0),
         'late' => (int)($counts['late'] ?? 0),
         'total' => (int)($counts['total'] ?? 0),
+    ],
+    'pagination' => [
+        'q' => $q,
+        'page' => $page,
+        'per_page' => $perPage,
+        'total_items' => $totalItems,
+        'total_pages' => $perPage > 0 ? (int)ceil($totalItems / $perPage) : 1,
     ],
     'items' => $items,
 ]);

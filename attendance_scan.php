@@ -333,7 +333,17 @@ try {
             exit;
         }
 
-        echo json_encode(['ok' => true, 'message' => 'Already scanned today', 'status' => $status, 'schedule' => $scheduleLabel]);
+        echo json_encode([
+            'ok' => true,
+            'already_scanned' => true,
+            'message' => 'Already scanned today',
+            'status' => $status,
+            'schedule' => $scheduleLabel,
+            'student' => [
+                'lrn' => (string)$student['lrn'],
+                'name' => $fullName,
+            ],
+        ]);
         exit;
     }
 

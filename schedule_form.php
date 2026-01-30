@@ -13,6 +13,7 @@ $isAdmin = is_admin();
 $taughtGrades = teacher_grade_levels_taught($teacherId);
 
 $values = [
+    'teacher_id' => (string)$teacherId,
     'subject_name' => '',
     'grade_level' => '',
     'section' => '',
@@ -24,10 +25,30 @@ $values = [
     'status' => 'Active',
 ];
 
+if ($isAdmin && $id === 0) {
+    $values['teacher_id'] = '';
+}
+
 $selectedDays = [];
 
 $errors = [];
 $pdo = db();
+
+$teachers = [];
+if ($isAdmin) {
+    try {
+        $stmt = $pdo->prepare(
+            'SELECT teacher_id, first_name, last_name, suffix, email
+             FROM teachers
+             WHERE status = "Active"
+             ORDER BY last_name, first_name'
+        );
+        $stmt->execute();
+        $teachers = $stmt->fetchAll();
+    } catch (Throwable $e) {
+        $teachers = [];
+    }
+}
 
 try {
     $pdo->exec('ALTER TABLE schedules MODIFY semester ENUM("1st","2nd") NULL');
@@ -59,9 +80,15 @@ $masterGrades = array_keys($sectionsByGrade);
 sort($masterGrades);
 
 if ($id > 0) {
-    $stmt = $pdo->prepare('SELECT * FROM schedules WHERE schedule_id = :id AND teacher_id = :teacher_id LIMIT 1');
-    $stmt->execute([':id' => $id, ':teacher_id' => $teacherId]);
-    $existing = $stmt->fetch();
+    if ($isAdmin) {
+        $stmt = $pdo->prepare('SELECT * FROM schedules WHERE schedule_id = :id LIMIT 1');
+        $stmt->execute([':id' => $id]);
+        $existing = $stmt->fetch();
+    } else {
+        $stmt = $pdo->prepare('SELECT * FROM schedules WHERE schedule_id = :id AND teacher_id = :teacher_id LIMIT 1');
+        $stmt->execute([':id' => $id, ':teacher_id' => $teacherId]);
+        $existing = $stmt->fetch();
+    }
 
     if (!$existing) {
         redirect('schedules.php');
@@ -75,6 +102,18 @@ if ($id > 0) {
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     foreach ($values as $k => $_) {
         $values[$k] = trim((string)($_POST[$k] ?? ''));
+    }
+
+    $effectiveTeacherId = $teacherId;
+    if ($isAdmin) {
+        if ($values['teacher_id'] === '' || !ctype_digit($values['teacher_id'])) {
+            $errors[] = 'Teacher is required.';
+        } else {
+            $effectiveTeacherId = (int)$values['teacher_id'];
+            if ($effectiveTeacherId <= 0) {
+                $errors[] = 'Teacher is required.';
+            }
+        }
     }
 
     if ($id > 0) {
@@ -158,7 +197,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         foreach ($selectedDays as $d) {
             $stmt = $pdo->prepare($conflictSql);
             $stmt->execute([
-                ':teacher_id' => $teacherId,
+                ':teacher_id' => $effectiveTeacherId,
                 ':day_of_week' => $d,
                 ':schedule_id' => $id,
                 ':start_time' => $values['start_time'],
@@ -175,33 +214,64 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if (!$errors) {
         if ($id > 0) {
-            $stmt = $pdo->prepare(
-                'UPDATE schedules
-                 SET subject_name = :subject_name,
-                     grade_level = :grade_level,
-                     section = :section,
-                     day_of_week = :day_of_week,
-                     start_time = :start_time,
-                     end_time = :end_time,
-                     room = :room,
-                     school_year = :school_year,
-                     status = :status
-                 WHERE schedule_id = :id AND teacher_id = :teacher_id'
-            );
+            if ($isAdmin) {
+                $stmt = $pdo->prepare(
+                    'UPDATE schedules
+                     SET teacher_id = :teacher_id,
+                         subject_name = :subject_name,
+                         grade_level = :grade_level,
+                         section = :section,
+                         day_of_week = :day_of_week,
+                         start_time = :start_time,
+                         end_time = :end_time,
+                         room = :room,
+                         school_year = :school_year,
+                         status = :status
+                     WHERE schedule_id = :id'
+                );
 
-            $stmt->execute([
-                ':subject_name' => $values['subject_name'],
-                ':grade_level' => (int)$values['grade_level'],
-                ':section' => $values['section'],
-                ':day_of_week' => $values['day_of_week'],
-                ':start_time' => $values['start_time'],
-                ':end_time' => $values['end_time'],
-                ':room' => $values['room'] !== '' ? $values['room'] : null,
-                ':school_year' => $values['school_year'],
-                ':status' => $values['status'],
-                ':id' => $id,
-                ':teacher_id' => $teacherId,
-            ]);
+                $stmt->execute([
+                    ':teacher_id' => $effectiveTeacherId,
+                    ':subject_name' => $values['subject_name'],
+                    ':grade_level' => (int)$values['grade_level'],
+                    ':section' => $values['section'],
+                    ':day_of_week' => $values['day_of_week'],
+                    ':start_time' => $values['start_time'],
+                    ':end_time' => $values['end_time'],
+                    ':room' => $values['room'] !== '' ? $values['room'] : null,
+                    ':school_year' => $values['school_year'],
+                    ':status' => $values['status'],
+                    ':id' => $id,
+                ]);
+            } else {
+                $stmt = $pdo->prepare(
+                    'UPDATE schedules
+                     SET subject_name = :subject_name,
+                         grade_level = :grade_level,
+                         section = :section,
+                         day_of_week = :day_of_week,
+                         start_time = :start_time,
+                         end_time = :end_time,
+                         room = :room,
+                         school_year = :school_year,
+                         status = :status
+                     WHERE schedule_id = :id AND teacher_id = :teacher_id'
+                );
+
+                $stmt->execute([
+                    ':subject_name' => $values['subject_name'],
+                    ':grade_level' => (int)$values['grade_level'],
+                    ':section' => $values['section'],
+                    ':day_of_week' => $values['day_of_week'],
+                    ':start_time' => $values['start_time'],
+                    ':end_time' => $values['end_time'],
+                    ':room' => $values['room'] !== '' ? $values['room'] : null,
+                    ':school_year' => $values['school_year'],
+                    ':status' => $values['status'],
+                    ':id' => $id,
+                    ':teacher_id' => $teacherId,
+                ]);
+            }
         } else {
             $pdo->beginTransaction();
             try {
@@ -212,7 +282,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 foreach ($selectedDays as $d) {
                     $stmt->execute([
-                        ':teacher_id' => $teacherId,
+                        ':teacher_id' => $effectiveTeacherId,
                         ':subject_name' => $values['subject_name'],
                         ':grade_level' => (int)$values['grade_level'],
                         ':section' => $values['section'],
@@ -267,23 +337,64 @@ require __DIR__ . '/partials/layout_top.php';
           <label class="form-label">Subject Name *</label>
           <input class="form-control" name="subject_name" value="<?= h($values['subject_name']) ?>" required>
         </div>
+        <?php if ($isAdmin): ?>
+          <div class="col-md-3">
+            <label class="form-label">Teacher *</label>
+            <select class="form-select" name="teacher_id" required>
+              <option value="">Select...</option>
+              <?php foreach ($teachers as $t): ?>
+                <?php
+                  $tid = (int)($t['teacher_id'] ?? 0);
+                  $tSuffix = trim((string)($t['suffix'] ?? ''));
+                  $tName = trim((string)($t['last_name'] ?? '') . ', ' . (string)($t['first_name'] ?? ''));
+                  if ($tSuffix !== '') {
+                      $tName .= ' ' . $tSuffix;
+                  }
+                ?>
+                <option value="<?= (int)$tid ?>" <?= (string)$values['teacher_id'] === (string)$tid ? 'selected' : '' ?>><?= h($tName) ?></option>
+              <?php endforeach; ?>
+              <?php if ($id > 0 && $values['teacher_id'] !== '' && ctype_digit($values['teacher_id'])): ?>
+                <?php
+                  $found = false;
+                  foreach ($teachers as $t) {
+                      if ((string)($t['teacher_id'] ?? '') === (string)$values['teacher_id']) {
+                          $found = true;
+                          break;
+                      }
+                  }
+                ?>
+                <?php if (!$found): ?>
+                  <option value="<?= (int)$values['teacher_id'] ?>" selected>Teacher #<?= (int)$values['teacher_id'] ?> (current)</option>
+                <?php endif; ?>
+              <?php endif; ?>
+            </select>
+          </div>
+        <?php endif; ?>
         <div class="col-md-3">
           <label class="form-label">Grade Level *</label>
-          <?php if (!$isAdmin && $taughtGrades): ?>
-            <select class="form-select" name="grade_level" id="grade_level" required>
-              <option value="">Select...</option>
+          <select class="form-select" name="grade_level" id="grade_level" required>
+            <option value="">Select...</option>
+            <?php if ($masterGrades): ?>
+              <?php if (!$isAdmin && $taughtGrades): ?>
+                <?php foreach ($taughtGrades as $g): ?>
+                  <?php if (!in_array((int)$g, $masterGrades, true)) continue; ?>
+                  <option value="<?= (int)$g ?>" <?= (string)$values['grade_level'] === (string)$g ? 'selected' : '' ?>><?= (int)$g ?></option>
+                <?php endforeach; ?>
+              <?php else: ?>
+                <?php foreach ($masterGrades as $g): ?>
+                  <option value="<?= (int)$g ?>" <?= (string)$values['grade_level'] === (string)$g ? 'selected' : '' ?>><?= (int)$g ?></option>
+                <?php endforeach; ?>
+              <?php endif; ?>
+            <?php elseif (!$isAdmin && $taughtGrades): ?>
               <?php foreach ($taughtGrades as $g): ?>
                 <option value="<?= (int)$g ?>" <?= (string)$values['grade_level'] === (string)$g ? 'selected' : '' ?>><?= (int)$g ?></option>
               <?php endforeach; ?>
-            </select>
-          <?php else: ?>
-            <select class="form-select" name="grade_level" id="grade_level" required>
-              <option value="">Select...</option>
+            <?php else: ?>
               <?php for ($g = 7; $g <= 12; $g++): ?>
                 <option value="<?= $g ?>" <?= (string)$values['grade_level'] === (string)$g ? 'selected' : '' ?>><?= $g ?></option>
               <?php endfor; ?>
-            </select>
-          <?php endif; ?>
+            <?php endif; ?>
+          </select>
         </div>
         <div class="col-md-3">
           <label class="form-label">Section *</label>

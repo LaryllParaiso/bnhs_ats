@@ -17,6 +17,9 @@ $section = trim((string)($_GET['section'] ?? ''));
 $status = trim((string)($_GET['status'] ?? ''));
 $export = trim((string)($_GET['export'] ?? ''));
 
+$page = max(1, (int)($_GET['page'] ?? 1));
+$perPage = 50;
+
 $today = new DateTimeImmutable('today');
 $defaultFrom = $today->sub(new DateInterval('P6D'))->format('Y-m-d');
 $defaultTo = $today->format('Y-m-d');
@@ -85,9 +88,32 @@ $sql =
     $sqlWhere .
     ' ORDER BY a.date DESC, sch.subject_name, st.last_name, st.first_name, st.lrn';
 
-$stmt = $pdo->prepare($sql);
-$stmt->execute($params);
-$rows = $stmt->fetchAll();
+if ($export !== '') {
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($params);
+    $rows = $stmt->fetchAll();
+} else {
+    $countSql =
+        'SELECT COUNT(*) AS cnt
+         FROM attendance a
+         JOIN students st ON st.student_id = a.student_id
+         JOIN schedules sch ON sch.schedule_id = a.schedule_id' .
+        $sqlWhere;
+
+    $stmt = $pdo->prepare($countSql);
+    $stmt->execute($params);
+    $rowTotal = (int)(($stmt->fetch()['cnt'] ?? 0));
+
+    $rowPg = paginate($rowTotal, $page, $perPage);
+    $page = (int)$rowPg['page'];
+    $limit = (int)$rowPg['per_page'];
+    $offset = (int)$rowPg['offset'];
+
+    $pagedSql = $sql . ' LIMIT ' . $limit . ' OFFSET ' . $offset;
+    $stmt = $pdo->prepare($pagedSql);
+    $stmt->execute($params);
+    $rows = $stmt->fetchAll();
+}
 
 $aggSql =
     'SELECT
@@ -422,6 +448,14 @@ require __DIR__ . '/partials/layout_top.php';
       </table>
     </div>
   </div>
+  <?php if ($export === ''): ?>
+    <div class="d-flex justify-content-between align-items-center p-2 border-top">
+      <div class="text-muted small">
+        Showing <?= (int)$rowPg['from'] ?>-<?= (int)$rowPg['to'] ?> of <?= (int)$rowPg['total'] ?>
+      </div>
+      <?= pagination_html('attendance_records.php', $_GET, (int)$rowPg['page'], (int)$rowPg['per_page'], (int)$rowPg['total']) ?>
+    </div>
+  <?php endif; ?>
 </div>
 
 <?php

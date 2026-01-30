@@ -54,13 +54,42 @@ foreach ($gradeSectionsActive as $r) {
 $masterGrades = array_keys($sectionsByGrade);
 sort($masterGrades);
 
-$stmt = $pdo->prepare(
-    'SELECT * FROM schedules
-     WHERE teacher_id = :teacher_id AND status != "Archived"
-     ORDER BY FIELD(day_of_week, "Monday","Tuesday","Wednesday","Thursday","Friday"), start_time'
-);
-$stmt->execute([':teacher_id' => $teacherId]);
-$teacherSchedules = $stmt->fetchAll();
+$loadAdminSchedules = static function (PDO $pdo, string $grade, string $section): array {
+    if ($grade === '' || $section === '' || !ctype_digit($grade)) {
+        return [];
+    }
+
+    $g = (int)$grade;
+    if ($g < 7 || $g > 12) {
+        return [];
+    }
+
+    $stmt = $pdo->prepare(
+        'SELECT s.schedule_id, s.teacher_id, s.subject_name, s.grade_level, s.section, s.day_of_week, s.start_time, s.end_time, s.school_year, s.status,
+                t.first_name AS teacher_first_name, t.last_name AS teacher_last_name, t.suffix AS teacher_suffix
+         FROM schedules s
+         JOIN teachers t ON t.teacher_id = s.teacher_id
+         WHERE s.status = "Active"
+           AND s.grade_level = :grade_level
+           AND s.section = :section
+         ORDER BY FIELD(s.day_of_week, "Monday","Tuesday","Wednesday","Thursday","Friday"), s.start_time'
+    );
+    $stmt->execute([':grade_level' => $g, ':section' => $section]);
+    return $stmt->fetchAll();
+};
+
+$loadTeacherSchedules = static function (PDO $pdo, int $teacherId): array {
+    $stmt = $pdo->prepare(
+        'SELECT *
+         FROM schedules
+         WHERE teacher_id = :teacher_id AND status != "Archived"
+         ORDER BY FIELD(day_of_week, "Monday","Tuesday","Wednesday","Thursday","Friday"), start_time'
+    );
+    $stmt->execute([':teacher_id' => $teacherId]);
+    return $stmt->fetchAll();
+};
+
+$availableSchedules = [];
 
 $selectedScheduleIds = [];
 
@@ -108,27 +137,40 @@ if ($id > 0) {
     foreach ($values as $k => $_) {
         $values[$k] = (string)($existing[$k] ?? $values[$k]);
     }
+}
 
-    if ($teacherSchedules) {
-        $scheduleIds = array_map(static fn ($s) => (int)$s['schedule_id'], $teacherSchedules);
-        $in = implode(',', array_fill(0, count($scheduleIds), '?'));
+$availableSchedules = $isAdmin
+    ? $loadAdminSchedules($pdo, (string)$values['grade_level'], (string)$values['section'])
+    : $loadTeacherSchedules($pdo, $teacherId);
 
-        $stmt = $pdo->prepare(
-            'SELECT schedule_id FROM student_schedules
-             WHERE student_id = ? AND status = "Active" AND schedule_id IN (' . $in . ')'
-        );
+if ($id > 0 && $availableSchedules) {
+    $scheduleIds = array_map(static fn ($s) => (int)$s['schedule_id'], $availableSchedules);
+    $in = implode(',', array_fill(0, count($scheduleIds), '?'));
 
-        $stmt->execute(array_merge([$id], $scheduleIds));
-        $selectedScheduleIds = array_map(static fn ($r) => (int)$r['schedule_id'], $stmt->fetchAll());
-    }
+    $stmt = $pdo->prepare(
+        'SELECT schedule_id FROM student_schedules
+         WHERE student_id = ? AND status = "Active" AND schedule_id IN (' . $in . ')'
+    );
+
+    $stmt->execute(array_merge([$id], $scheduleIds));
+    $selectedScheduleIds = array_map(static fn ($r) => (int)$r['schedule_id'], $stmt->fetchAll());
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $action = trim((string)($_POST['action'] ?? 'save'));
+
     foreach ($values as $k => $_) {
         $values[$k] = trim((string)($_POST[$k] ?? ''));
     }
 
+    $availableSchedules = $isAdmin
+        ? $loadAdminSchedules($pdo, (string)$values['grade_level'], (string)$values['section'])
+        : $loadTeacherSchedules($pdo, $teacherId);
+
     $selectedScheduleIds = array_map('intval', (array)($_POST['schedule_ids'] ?? []));
+
+    if ($action === 'load') {
+    } else {
 
     if ($values['lrn'] === '' || !ctype_digit($values['lrn']) || strlen($values['lrn']) !== 12) {
         $errors[] = 'LRN must be exactly 12 digits.';
@@ -189,8 +231,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if (!$errors) {
-        $teacherScheduleIds = array_map(static fn ($s) => (int)$s['schedule_id'], $teacherSchedules);
-        $allowed = array_flip($teacherScheduleIds);
+        $allowedScheduleIds = array_map(static fn ($s) => (int)$s['schedule_id'], $availableSchedules);
+        $allowed = array_flip($allowedScheduleIds);
         foreach ($selectedScheduleIds as $sid) {
             if (!isset($allowed[$sid])) {
                 $errors[] = 'Invalid schedule selection.';
@@ -199,7 +241,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
-    if (!$errors && $id === 0 && $teacherSchedules && !$selectedScheduleIds) {
+    if (!$errors && $id === 0 && $availableSchedules && !$selectedScheduleIds) {
         $errors[] = 'Please select at least one schedule for enrollment.';
     }
 
@@ -277,12 +319,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $id = (int)$pdo->lastInsertId();
             }
 
-            if ($teacherSchedules) {
-                $teacherScheduleIds = array_map(static fn ($s) => (int)$s['schedule_id'], $teacherSchedules);
-                $in = implode(',', array_fill(0, count($teacherScheduleIds), '?'));
+            if ($availableSchedules) {
+                $scopeScheduleIds = array_map(static fn ($s) => (int)$s['schedule_id'], $availableSchedules);
+                $in = implode(',', array_fill(0, count($scopeScheduleIds), '?'));
 
                 $stmt = $pdo->prepare('DELETE FROM student_schedules WHERE student_id = ? AND schedule_id IN (' . $in . ')');
-                $stmt->execute(array_merge([$id], $teacherScheduleIds));
+                $stmt->execute(array_merge([$id], $scopeScheduleIds));
 
                 if ($selectedScheduleIds) {
                     $stmt = $pdo->prepare('INSERT INTO student_schedules (student_id, schedule_id, status) VALUES (:student_id, :schedule_id, "Active")');
@@ -298,6 +340,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $pdo->rollBack();
             $errors[] = 'Failed to save student.';
         }
+    }
+
     }
 }
 
@@ -414,17 +458,34 @@ require __DIR__ . '/partials/layout_top.php';
         </div>
 
         <div class="col-12">
-          <label class="form-label">Enroll to Your Schedules</label>
+          <label class="form-label"><?= $isAdmin ? 'Enroll to Schedules' : 'Enroll to Your Schedules' ?></label>
           <div class="border rounded p-3 bg-white">
-            <?php if (!$teacherSchedules): ?>
-              <div class="text-muted">No schedules available. Create schedules first.</div>
+            <?php if ($isAdmin): ?>
+              <div class="d-flex justify-content-end">
+                <button type="submit" name="action" value="load" class="btn btn-outline-secondary btn-sm" formnovalidate>Refresh schedules</button>
+              </div>
+              <hr>
+            <?php endif; ?>
+            <?php if (!$availableSchedules): ?>
+              <div class="text-muted"><?= $isAdmin ? 'No schedules available for this grade and section.' : 'No schedules available. Create schedules first.' ?></div>
             <?php else: ?>
               <div class="row g-2">
-                <?php foreach ($teacherSchedules as $sch): ?>
+                <?php foreach ($availableSchedules as $sch): ?>
                   <?php
                     $sid = (int)$sch['schedule_id'];
                     $checked = in_array($sid, $selectedScheduleIds, true);
-                    $label = (string)$sch['subject_name'] . ' — ' . (string)$sch['day_of_week'] . ' ' . (string)$sch['start_time'] . '-' . (string)$sch['end_time'] . ' (' . (string)$sch['grade_level'] . '-' . (string)$sch['section'] . ')';
+                    $label = (string)$sch['subject_name'];
+                    if ($isAdmin) {
+                        $tSuffix = trim((string)($sch['teacher_suffix'] ?? ''));
+                        $tName = trim((string)($sch['teacher_last_name'] ?? '') . ', ' . (string)($sch['teacher_first_name'] ?? ''));
+                        if ($tSuffix !== '') {
+                            $tName .= ' ' . $tSuffix;
+                        }
+                        if ($tName !== '') {
+                            $label .= ' — ' . $tName;
+                        }
+                    }
+                    $label .= ' — ' . (string)$sch['day_of_week'] . ' ' . (string)$sch['start_time'] . '-' . (string)$sch['end_time'] . ' (' . (string)$sch['grade_level'] . '-' . (string)$sch['section'] . ')';
                   ?>
                   <div class="col-12">
                     <div class="form-check">

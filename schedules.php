@@ -14,6 +14,9 @@ $grade = trim((string)($_GET['grade'] ?? ''));
 $section = trim((string)($_GET['section'] ?? ''));
 $status = trim((string)($_GET['status'] ?? ''));
 
+$page = max(1, (int)($_GET['page'] ?? 1));
+$perPage = 25;
+
 $where = [];
 $params = [];
 
@@ -45,7 +48,19 @@ if (in_array($status, ['Active','Inactive','Archived'], true)) {
 $sql = 'SELECT * FROM schedules' . ($where ? (' WHERE ' . implode(' AND ', $where)) : '') . ' ORDER BY FIELD(day_of_week, "Monday","Tuesday","Wednesday","Thursday","Friday"), start_time';
 
 $pdo = db();
-$stmt = $pdo->prepare($sql);
+
+$countSql = 'SELECT COUNT(*) AS cnt FROM schedules' . ($where ? (' WHERE ' . implode(' AND ', $where)) : '');
+$stmt = $pdo->prepare($countSql);
+$stmt->execute($params);
+$total = (int)(($stmt->fetch()['cnt'] ?? 0));
+
+$pg = paginate($total, $page, $perPage);
+$page = (int)$pg['page'];
+$limit = (int)$pg['per_page'];
+$offset = (int)$pg['offset'];
+
+$pagedSql = $sql . ' LIMIT ' . $limit . ' OFFSET ' . $offset;
+$stmt = $pdo->prepare($pagedSql);
 $stmt->execute($params);
 $schedules = $stmt->fetchAll();
 
@@ -160,6 +175,12 @@ require __DIR__ . '/partials/layout_top.php';
         </tbody>
       </table>
     </div>
+  </div>
+  <div class="d-flex justify-content-between align-items-center p-2 border-top">
+    <div class="text-muted small">
+      Showing <?= (int)$pg['from'] ?>-<?= (int)$pg['to'] ?> of <?= (int)$pg['total'] ?>
+    </div>
+    <?= pagination_html('schedules.php', $_GET, (int)$pg['page'], (int)$pg['per_page'], (int)$pg['total']) ?>
   </div>
 </div>
 

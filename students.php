@@ -15,6 +15,9 @@ $grade = trim((string)($_GET['grade'] ?? ''));
 $section = trim((string)($_GET['section'] ?? ''));
 $status = trim((string)($_GET['status'] ?? ''));
 
+$page = max(1, (int)($_GET['page'] ?? 1));
+$perPage = 25;
+
 $params = [];
 $where = [];
 
@@ -34,8 +37,11 @@ if (!$isAdmin) {
 }
 
 if ($q !== '') {
-    $where[] = '(lrn LIKE :q OR first_name LIKE :q OR last_name LIKE :q)';
-    $params[':q'] = '%' . $q . '%';
+    $where[] = '(lrn LIKE :q1 OR first_name LIKE :q2 OR last_name LIKE :q3)';
+    $qLike = '%' . $q . '%';
+    $params[':q1'] = $qLike;
+    $params[':q2'] = $qLike;
+    $params[':q3'] = $qLike;
 }
 
 if ($grade !== '' && ctype_digit($grade)) {
@@ -60,7 +66,39 @@ if ($where) {
 $sql .= ' ORDER BY last_name, first_name, lrn';
 
 $pdo = db();
-$stmt = $pdo->prepare($sql);
+
+$countSql = 'SELECT COUNT(*) AS cnt FROM students' . ($where ? (' WHERE ' . implode(' AND ', $where)) : '');
+$stmt = $pdo->prepare($countSql);
+$stmt->execute($params);
+$total = (int)(($stmt->fetch()['cnt'] ?? 0));
+
+$activeCount = 0;
+$inactiveCount = 0;
+try {
+    $aggSql =
+        'SELECT
+            SUM(CASE WHEN status = "Active" THEN 1 ELSE 0 END) AS active,
+            SUM(CASE WHEN status = "Inactive" THEN 1 ELSE 0 END) AS inactive,
+            COUNT(*) AS total
+         FROM students' . ($where ? (' WHERE ' . implode(' AND ', $where)) : '');
+
+    $stmt = $pdo->prepare($aggSql);
+    $stmt->execute($params);
+    $agg = $stmt->fetch() ?: [];
+    $activeCount = (int)($agg['active'] ?? 0);
+    $inactiveCount = (int)($agg['inactive'] ?? 0);
+} catch (Throwable $e) {
+    $activeCount = 0;
+    $inactiveCount = 0;
+}
+
+$pg = paginate($total, $page, $perPage);
+$page = (int)$pg['page'];
+$limit = (int)$pg['per_page'];
+$offset = (int)$pg['offset'];
+
+$pagedSql = $sql . ' LIMIT ' . $limit . ' OFFSET ' . $offset;
+$stmt = $pdo->prepare($pagedSql);
 $stmt->execute($params);
 $students = $stmt->fetchAll();
 
@@ -80,6 +118,31 @@ require __DIR__ . '/partials/layout_top.php';
   <h1 class="bnhs-page-title">Students</h1>
   <div class="bnhs-page-actions">
     <a class="btn btn-primary btn-sm" href="<?= h(url('student_form.php')) ?>">Add Student</a>
+  </div>
+</div>
+
+<div class="card shadow-sm mb-3">
+  <div class="card-body">
+    <div class="row g-3">
+      <div class="col-6 col-md-4">
+        <div class="bnhs-metric">
+          <div class="bnhs-metric-label">Active</div>
+          <div class="bnhs-metric-value"><?= (int)$activeCount ?></div>
+        </div>
+      </div>
+      <div class="col-6 col-md-4">
+        <div class="bnhs-metric">
+          <div class="bnhs-metric-label">Inactive</div>
+          <div class="bnhs-metric-value"><?= (int)$inactiveCount ?></div>
+        </div>
+      </div>
+      <div class="col-12 col-md-4">
+        <div class="bnhs-metric">
+          <div class="bnhs-metric-label">Total</div>
+          <div class="bnhs-metric-value"><?= (int)$total ?></div>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -172,6 +235,12 @@ require __DIR__ . '/partials/layout_top.php';
         </tbody>
       </table>
     </div>
+  </div>
+  <div class="d-flex justify-content-between align-items-center p-2 border-top">
+    <div class="text-muted small">
+      Showing <?= (int)$pg['from'] ?>-<?= (int)$pg['to'] ?> of <?= (int)$pg['total'] ?>
+    </div>
+    <?= pagination_html('students.php', $_GET, (int)$pg['page'], (int)$pg['per_page'], (int)$pg['total']) ?>
   </div>
 </div>
 
