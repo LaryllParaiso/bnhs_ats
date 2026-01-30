@@ -3,3 +3,5 @@ config/*.php
 .env
 node_modules/
 .vscode/
+database/load_test_p8_02.sql
+database/load_test_p8_03.sql
