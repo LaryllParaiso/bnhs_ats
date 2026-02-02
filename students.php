@@ -114,6 +114,10 @@ require __DIR__ . '/partials/layout_top.php';
   <div class="alert alert-info">Student archived.</div>
 <?php endif; ?>
 
+<?php if (isset($_GET['deleted'])): ?>
+  <div class="alert alert-success">Student deleted.</div>
+<?php endif; ?>
+
 <div class="bnhs-page-header">
   <h1 class="bnhs-page-title">Students</h1>
   <div class="bnhs-page-actions">
@@ -225,9 +229,13 @@ require __DIR__ . '/partials/layout_top.php';
                   <?php if ($s['status'] === 'Active'): ?>
                     <form class="d-inline" method="post" action="<?= h(url('student_archive.php')) ?>" data-confirm="Archive this student?" data-confirm-title="Archive Student" data-confirm-ok="Archive" data-confirm-cancel="Cancel" data-confirm-icon="warning">
                       <input type="hidden" name="id" value="<?= h((string)$s['student_id']) ?>">
-                      <button class="btn btn-sm btn-outline-danger" type="submit">Archive</button>
+                      <button class="btn btn-sm btn-outline-warning" type="submit">Archive</button>
                     </form>
                   <?php endif; ?>
+                  <form class="d-inline" method="post" action="<?= h(url('student_delete.php')) ?>" data-confirm="Delete this student permanently? This will also remove their enrollments and attendance records." data-confirm-title="Delete Student" data-confirm-ok="Delete" data-confirm-cancel="Cancel" data-confirm-icon="danger">
+                    <input type="hidden" name="id" value="<?= h((string)$s['student_id']) ?>">
+                    <button class="btn btn-sm btn-outline-danger" type="submit">Delete</button>
+                  </form>
                 </td>
               </tr>
             <?php endforeach; ?>

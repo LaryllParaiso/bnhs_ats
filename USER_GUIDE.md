@@ -1,6 +1,27 @@
 # BNH QR Attendance System (BNH_ATS) — User Guide
 
-## 1) Login
+## 1) Setup on a new laptop (Windows / XAMPP)
+
+1. Install **XAMPP**
+2. Start:
+   - Apache
+   - MySQL
+3. Copy the project folder to:
+   - `C:\xampp\htdocs\BNH_ATS`
+4. Create and import the database:
+   - Open phpMyAdmin: `http://localhost/phpmyadmin`
+   - Create DB: `attendance_system`
+   - Import schema (choose one):
+     - `schema.db` (recommended)
+     - `database/attendance_system.sql`
+5. Configure the app:
+   - Open `config/config.php`
+   - Confirm `APP_BASE_URL` is `/BNH_ATS` (or match your folder name)
+   - Confirm `DB_HOST`, `DB_NAME`, `DB_USER`, `DB_PASS`
+6. Open the system:
+   - `http://localhost/BNH_ATS/login.php`
+
+## 2) Login
 
 ### Admin (pre-created)
 
@@ -12,7 +33,7 @@
 - Teachers login using the account created for them.
 - If teacher registration/approval is enabled in your deployment, teachers may need Admin approval before they can use the system.
 
-## 2) Recommended setup order (important)
+## 3) Recommended setup order (important)
 
 Follow this order to avoid missing schedules/enrollments:
 
@@ -23,7 +44,7 @@ Follow this order to avoid missing schedules/enrollments:
 5. Teachers scan QR codes (Day Scanner / Session Scanner)
 6. View attendance records and reports
 
-## 3) Admin workflow
+## 4) Admin workflow
 
 ### A. First login checks
 
@@ -42,7 +63,7 @@ Follow this order to avoid missing schedules/enrollments:
 - Set the scanning status to **ACTIVE** for the day.
 - Configure late/grace rules if your school uses them.
 
-## 4) Teacher workflow
+## 5) Teacher workflow
 
 ### A. Create schedules for the whole week (required before student enrollment)
 
@@ -69,7 +90,7 @@ Tips:
 - Open the session scanner and start the camera.
 - Scan students for that session.
 
-## 5) Student workflow
+## 6) Student workflow
 
 ### A. Student registration
 
@@ -83,12 +104,12 @@ Tips:
 - After registration, the student QR code can be viewed/downloaded from the student QR page/profile.
 - Students should present the QR code during scanning.
 
-## 6) Viewing attendance records
+## 7) Viewing attendance records
 
 - Use **Attendance Records** to filter by date, grade, section, schedule/session (if applicable), and status.
 - Use the built-in filters to review totals and details.
 
-## 7) Mobile scanning notes (Android / iOS)
+## 8) Mobile scanning notes (Android / iOS)
 
 - Many mobile browsers require **HTTPS** to allow camera access when opening the site via an IP address (e.g., `http://192.168.x.x`).
 - If you plan to scan using phones over hotspot/Wi‑Fi, set up HTTPS for your site.

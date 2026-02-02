@@ -8,7 +8,7 @@ BNH_ATS is a PHP + MySQL (XAMPP) web app for QR-based attendance.
 - MySQL / MariaDB
 - Browser with camera support (Chrome/Edge recommended)
 
-## Quick Setup (Windows / XAMPP)
+## Setup on a New Laptop (Windows / XAMPP)
 
 1) **Install XAMPP**
 
@@ -16,7 +16,7 @@ BNH_ATS is a PHP + MySQL (XAMPP) web app for QR-based attendance.
   - Apache
   - MySQL
 
-2) **Clone the project into `htdocs`**
+2) **Put the project inside `htdocs`**
 
 - Put the folder here:
   - `C:\xampp\htdocs\BNH_ATS`
@@ -41,12 +41,22 @@ BNH_ATS is a PHP + MySQL (XAMPP) web app for QR-based attendance.
 - `config/config.php`
   - `DB_HOST`, `DB_NAME`, `DB_USER`, `DB_PASS`
 
-5) **(Optional) Install PHP dependencies**
+5) **(Optional) Install PHP dependencies (Composer)**
 
 If your repo does not include `vendor/`:
 
 - Run in the project root:
   - `composer install`
+
+6) **Run the app**
+
+- Visit:
+  - `http://localhost/BNH_ATS/login.php`
+
+If Apache is running but the page is not loading:
+
+- Check XAMPP Control Panel if Apache/MySQL are started.
+- Make sure the folder name matches `APP_BASE_URL`.
 
 ## Default Admin Account
 
@@ -54,11 +64,6 @@ If your repo does not include `vendor/`:
 - Password: `Bicos@123`
 
 For security, change the default password after first login.
-
-## Run the app
-
-- Visit:
-  - `http://localhost/BNH_ATS/login.php`
 
 ## Usage Guide
 

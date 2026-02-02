@@ -25,6 +25,21 @@ $success = null;
 
 $gradeSections = [];
 
+$gsEdit = null;
+$gsEditId = 0;
+if ($isAdmin) {
+    $gsEditId = (int)($_GET['gs_edit'] ?? 0);
+    if ($gsEditId > 0) {
+        try {
+            $stmt = $pdo->prepare('SELECT grade_section_id, grade_level, section, status FROM grade_sections WHERE grade_section_id = :id LIMIT 1');
+            $stmt->execute([':id' => $gsEditId]);
+            $gsEdit = $stmt->fetch();
+        } catch (Throwable $e) {
+            $gsEdit = null;
+        }
+    }
+}
+
 if ($isAdmin && $_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['form'] ?? '') === 'grade_sections') {
     $action = (string)($_POST['action'] ?? '');
 
@@ -58,6 +73,137 @@ if ($isAdmin && $_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['form']
                 }
             } catch (Throwable $e) {
                 $errors[] = 'Failed to add Grade/Section.';
+            }
+        }
+    } elseif ($action === 'update') {
+        $gsId = (int)($_POST['grade_section_id'] ?? 0);
+        $g = (int)($_POST['gs_grade_level'] ?? 0);
+        $section = trim((string)($_POST['gs_section'] ?? ''));
+
+        if ($gsId <= 0) {
+            $errors[] = 'Invalid request.';
+        }
+        if ($g < 7 || $g > 12) {
+            $errors[] = 'Invalid grade level.';
+        }
+        if ($section === '') {
+            $errors[] = 'Section is required.';
+        }
+        if (strlen($section) > 20) {
+            $errors[] = 'Section is too long.';
+        }
+
+        if (!$errors) {
+            try {
+                $stmt = $pdo->prepare('SELECT grade_level, section FROM grade_sections WHERE grade_section_id = :id LIMIT 1');
+                $stmt->execute([':id' => $gsId]);
+                $existingGs = $stmt->fetch();
+
+                if (!$existingGs) {
+                    $errors[] = 'Grade/Section not found.';
+                } else {
+                    $oldG = (int)($existingGs['grade_level'] ?? 0);
+                    $oldSection = (string)($existingGs['section'] ?? '');
+
+                    if (!$errors) {
+                        $pdo->beginTransaction();
+                        try {
+                            $stmt = $pdo->prepare(
+                                'UPDATE grade_sections
+                                 SET grade_level = :grade_level,
+                                     section = :section,
+                                     updated_at = CURRENT_TIMESTAMP
+                                 WHERE grade_section_id = :id'
+                            );
+                            $stmt->execute([':grade_level' => $g, ':section' => $section, ':id' => $gsId]);
+
+                            if ($oldG !== $g || $oldSection !== $section) {
+                                $stmt = $pdo->prepare(
+                                    'UPDATE students
+                                     SET grade_level = :new_g,
+                                         section = :new_s,
+                                         updated_at = CURRENT_TIMESTAMP
+                                     WHERE grade_level = :old_g AND section = :old_s'
+                                );
+                                $stmt->execute([
+                                    ':new_g' => $g,
+                                    ':new_s' => $section,
+                                    ':old_g' => $oldG,
+                                    ':old_s' => $oldSection,
+                                ]);
+
+                                $stmt = $pdo->prepare(
+                                    'UPDATE schedules
+                                     SET grade_level = :new_g,
+                                         section = :new_s,
+                                         updated_at = CURRENT_TIMESTAMP
+                                     WHERE grade_level = :old_g AND section = :old_s'
+                                );
+                                $stmt->execute([
+                                    ':new_g' => $g,
+                                    ':new_s' => $section,
+                                    ':old_g' => $oldG,
+                                    ':old_s' => $oldSection,
+                                ]);
+                            }
+
+                            $pdo->commit();
+                            $success = 'Grade/Section updated.';
+                        } catch (PDOException $e) {
+                            if ($pdo->inTransaction()) {
+                                $pdo->rollBack();
+                            }
+                            if (($e->getCode() ?? '') === '23000') {
+                                $errors[] = 'That Grade/Section already exists.';
+                            } else {
+                                $errors[] = 'Failed to update Grade/Section.';
+                            }
+                        } catch (Throwable $e) {
+                            if ($pdo->inTransaction()) {
+                                $pdo->rollBack();
+                            }
+                            $errors[] = 'Failed to update Grade/Section.';
+                        }
+                    }
+                }
+            } catch (Throwable $e) {
+                $errors[] = 'Failed to update Grade/Section.';
+            }
+        }
+    } elseif ($action === 'delete') {
+        $gsId = (int)($_POST['grade_section_id'] ?? 0);
+        if ($gsId <= 0) {
+            $errors[] = 'Invalid request.';
+        } else {
+            try {
+                $stmt = $pdo->prepare('SELECT grade_level, section FROM grade_sections WHERE grade_section_id = :id LIMIT 1');
+                $stmt->execute([':id' => $gsId]);
+                $existingGs = $stmt->fetch();
+
+                if (!$existingGs) {
+                    $errors[] = 'Grade/Section not found.';
+                } else {
+                    $oldG = (int)($existingGs['grade_level'] ?? 0);
+                    $oldSection = (string)($existingGs['section'] ?? '');
+
+                    $stmt = $pdo->prepare('SELECT COUNT(*) AS cnt FROM students WHERE grade_level = :g AND section = :s');
+                    $stmt->execute([':g' => $oldG, ':s' => $oldSection]);
+                    $studentsCnt = (int)($stmt->fetch()['cnt'] ?? 0);
+
+                    $stmt = $pdo->prepare('SELECT COUNT(*) AS cnt FROM schedules WHERE grade_level = :g AND section = :s');
+                    $stmt->execute([':g' => $oldG, ':s' => $oldSection]);
+                    $schedulesCnt = (int)($stmt->fetch()['cnt'] ?? 0);
+
+                    if ($studentsCnt > 0 || $schedulesCnt > 0) {
+                        $errors[] = 'Cannot delete this Grade/Section because it is already used by existing students or schedules. Deactivate it instead.';
+                    } else {
+                        $stmt = $pdo->prepare('DELETE FROM grade_sections WHERE grade_section_id = :id');
+                        $stmt->execute([':id' => $gsId]);
+                        $success = 'Grade/Section deleted.';
+                    }
+                }
+            } catch (Throwable $e) {
+                $errors[] = 'Failed to delete Grade/Section.';
             }
         }
     } elseif ($action === 'toggle') {
@@ -340,22 +486,30 @@ require __DIR__ . '/partials/layout_top.php';
 
           <form method="post" action="<?= h(url('settings.php')) ?>" class="row g-2 align-items-end">
             <input type="hidden" name="form" value="grade_sections">
+            <?php if ($gsEdit): ?>
+              <input type="hidden" name="grade_section_id" value="<?= (int)$gsEdit['grade_section_id'] ?>">
+            <?php endif; ?>
             <div class="col-md-3">
               <label class="form-label">Grade Level</label>
               <select class="form-select" name="gs_grade_level" required>
                 <option value="">Select...</option>
                 <?php for ($g = 7; $g <= 12; $g++): ?>
-                  <option value="<?= $g ?>">Grade <?= $g ?></option>
+                  <option value="<?= $g ?>" <?= $gsEdit && (int)$gsEdit['grade_level'] === $g ? 'selected' : '' ?>>Grade <?= $g ?></option>
                 <?php endfor; ?>
               </select>
             </div>
             <div class="col-md-6">
               <label class="form-label">Section</label>
-              <input class="form-control" name="gs_section" placeholder="e.g., A, STE, ICT" required>
+              <input class="form-control" name="gs_section" placeholder="e.g., A, STE, ICT" value="<?= $gsEdit ? h((string)$gsEdit['section']) : '' ?>" required>
             </div>
             <div class="col-md-3">
-              <button class="btn btn-primary w-100" type="submit" name="action" value="add">Add</button>
+              <button class="btn btn-primary w-100" type="submit" name="action" value="<?= $gsEdit ? 'update' : 'add' ?>"><?= $gsEdit ? 'Save' : 'Add' ?></button>
             </div>
+            <?php if ($gsEdit): ?>
+              <div class="col-12">
+                <a class="btn btn-link px-0" href="<?= h(url('settings.php?teacher_id=' . (int)$targetId)) ?>">Cancel edit</a>
+              </div>
+            <?php endif; ?>
           </form>
 
           <hr>
@@ -396,6 +550,7 @@ require __DIR__ . '/partials/layout_top.php';
                         <?php endif; ?>
                       </td>
                       <td class="text-end">
+                        <a class="btn btn-outline-primary btn-sm" href="<?= h(url('settings.php?teacher_id=' . (int)$targetId . '&gs_edit=' . (int)$gs['grade_section_id'])) ?>">Edit</a>
                         <?php if ((string)$gs['status'] === 'Active'): ?>
                           <form method="post" action="<?= h(url('settings.php')) ?>" class="d-inline">
                             <input type="hidden" name="form" value="grade_sections">
@@ -411,6 +566,11 @@ require __DIR__ . '/partials/layout_top.php';
                             <input type="hidden" name="status" value="">
                           </form>
                         <?php endif; ?>
+                        <form method="post" action="<?= h(url('settings.php')) ?>" class="d-inline" data-confirm="Delete this grade/section? This cannot be undone." data-confirm-title="Delete Grade/Section" data-confirm-ok="Delete" data-confirm-cancel="Cancel" data-confirm-icon="danger">
+                          <input type="hidden" name="form" value="grade_sections">
+                          <input type="hidden" name="grade_section_id" value="<?= (int)$gs['grade_section_id'] ?>">
+                          <button type="submit" name="action" value="delete" class="btn btn-outline-danger btn-sm">Delete</button>
+                        </form>
                       </td>
                     </tr>
                   <?php endforeach; ?>
