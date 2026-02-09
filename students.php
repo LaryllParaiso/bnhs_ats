@@ -102,6 +102,23 @@ $stmt = $pdo->prepare($pagedSql);
 $stmt->execute($params);
 $students = $stmt->fetchAll();
 
+$attendanceCounts = [];
+if ($students) {
+    $studentIds = array_map(function ($s) { return (int)$s['student_id']; }, $students);
+    $inPlaceholders = implode(',', array_fill(0, count($studentIds), '?'));
+    $attSql = "SELECT student_id,
+                      SUM(CASE WHEN status = 'Absent' THEN 1 ELSE 0 END) AS total_absent,
+                      SUM(CASE WHEN status = 'Late' THEN 1 ELSE 0 END) AS total_late
+               FROM attendance
+               WHERE student_id IN ($inPlaceholders)
+               GROUP BY student_id";
+    $attStmt = $pdo->prepare($attSql);
+    $attStmt->execute($studentIds);
+    foreach ($attStmt->fetchAll() as $row) {
+        $attendanceCounts[(int)$row['student_id']] = $row;
+    }
+}
+
 $title = 'Students';
 require __DIR__ . '/partials/layout_top.php';
 ?>
@@ -120,9 +137,26 @@ require __DIR__ . '/partials/layout_top.php';
 
 <div class="bnhs-page-header">
   <h1 class="bnhs-page-title">Students</h1>
-  <div class="bnhs-page-actions">
+  <div class="bnhs-page-actions d-flex gap-2 flex-wrap align-items-center">
+    <input type="month" id="exportMonth" class="form-control form-control-sm" style="width:160px" value="<?= h(date('Y-m')) ?>">
+    <a class="btn btn-success btn-sm" id="btnExportExcel" href="#">Export Excel</a>
+    <a class="btn btn-danger btn-sm" id="btnExportPdf" href="#">Export PDF</a>
     <a class="btn btn-primary btn-sm" href="<?= h(url('student_form.php')) ?>">Add Student</a>
   </div>
+  <script>
+  (function(){
+    var base = <?= json_encode(url('export_sf2.php')) ?>;
+    var fixedParams = <?= json_encode(array_filter(['grade' => $grade, 'section' => $section, 'status' => $status, 'q' => $q])) ?>;
+    function buildUrl(fmt){
+      var m = document.getElementById('exportMonth').value;
+      var p = Object.assign({}, fixedParams, {format: fmt, month: m});
+      var qs = new URLSearchParams(p).toString();
+      return base + '?' + qs;
+    }
+    document.getElementById('btnExportExcel').addEventListener('click', function(e){ e.preventDefault(); window.location.href = buildUrl('excel'); });
+    document.getElementById('btnExportPdf').addEventListener('click', function(e){ e.preventDefault(); window.location.href = buildUrl('pdf'); });
+  })();
+  </script>
 </div>
 
 <div class="card shadow-sm mb-3">
@@ -188,13 +222,15 @@ require __DIR__ . '/partials/layout_top.php';
             <th>Grade-Section</th>
             <th>Sex</th>
             <th>Status</th>
+            <th class="text-center">Total Absent</th>
+            <th class="text-center">Total Late</th>
             <th class="text-end">Actions</th>
           </tr>
         </thead>
         <tbody>
           <?php if (!$students): ?>
             <tr>
-              <td colspan="6" class="p-0">
+              <td colspan="8" class="p-0">
                 <div class="bnhs-empty-state">
                   <div class="bnhs-empty-icon" aria-hidden="true">
                     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -222,7 +258,14 @@ require __DIR__ . '/partials/layout_top.php';
                 <td><?= h($name) ?></td>
                 <td><?= h((string)$s['grade_level'] . '-' . (string)$s['section']) ?></td>
                 <td><?= h((string)$s['sex']) ?></td>
+                <?php
+                  $sid = (int)$s['student_id'];
+                  $absCount = (int)($attendanceCounts[$sid]['total_absent'] ?? 0);
+                  $lateCount = (int)($attendanceCounts[$sid]['total_late'] ?? 0);
+                ?>
                 <td><?= h((string)$s['status']) ?></td>
+                <td class="text-center"><?= $absCount ?></td>
+                <td class="text-center"><?= $lateCount ?></td>
                 <td class="text-end">
                   <a class="btn btn-sm btn-outline-secondary" href="<?= h(url('student_view.php?id=' . (int)$s['student_id'])) ?>">View</a>
                   <a class="btn btn-sm btn-outline-primary" href="<?= h(url('student_form.php?id=' . (int)$s['student_id'])) ?>">Edit</a>
