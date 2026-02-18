@@ -54,7 +54,17 @@ function password_is_strong(string $password): bool
     return $hasUpper && $hasLower && $hasDigit && $hasSpecial;
 }
 
+function is_super_admin(): bool
+{
+    return (string)($_SESSION['role'] ?? '') === 'Super Admin';
+}
+
 function is_admin(): bool
+{
+    return in_array((string)($_SESSION['role'] ?? ''), ['Admin', 'Super Admin'], true);
+}
+
+function is_admin_only(): bool
 {
     return (string)($_SESSION['role'] ?? '') === 'Admin';
 }

@@ -202,6 +202,40 @@ if ($scheduleId <= 0) {
     exit;
 }
 
+// Check class suspension
+try {
+    $suspCheckDate = $sessionDate;
+    $studentGrade = (int)$student['grade_level'];
+    $studentSection = (string)$student['section'];
+
+    $suspSql = 'SELECT suspension_id, reason FROM class_suspensions
+        WHERE :chk_date BETWEEN start_date AND end_date
+          AND (
+            scope = "school"
+            OR (scope = "grade" AND grade_level = :grade1)
+            OR (scope = "section" AND grade_level = :grade2 AND section = :section)
+            OR (scope = "subject" AND schedule_id = :sched_id)
+          )
+        LIMIT 1';
+    $suspStmt = $pdo->prepare($suspSql);
+    $suspStmt->execute([
+        ':chk_date' => $suspCheckDate,
+        ':grade1' => $studentGrade,
+        ':grade2' => $studentGrade,
+        ':section' => $studentSection,
+        ':sched_id' => $scheduleId,
+    ]);
+    $suspRow = $suspStmt->fetch();
+    if ($suspRow) {
+        $suspReason = (string)($suspRow['reason'] ?? '');
+        $suspMsg = 'Class is suspended' . ($suspReason !== '' ? ': ' . $suspReason : '');
+        echo json_encode(['ok' => false, 'message' => $suspMsg, 'suspended' => true]);
+        exit;
+    }
+} catch (Throwable $e) {
+    // If table doesn't exist yet, ignore
+}
+
 $stmt = $pdo->prepare(
     'SELECT COUNT(*) AS cnt
      FROM student_schedules

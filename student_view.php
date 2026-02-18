@@ -126,30 +126,31 @@ require __DIR__ . '/partials/layout_top.php';
 
 <div class="card shadow-sm mb-3">
   <div class="card-body">
+    <div class="d-flex align-items-center gap-3 mb-3 pb-3" style="border-bottom:1px solid var(--border-color)">
+      <?php $initial = strtoupper(mb_substr(trim((string)$student['first_name']), 0, 1)); ?>
+      <div style="width:52px;height:52px;border-radius:50%;background:linear-gradient(135deg,var(--primary-navy),var(--primary-navy-light));color:#fff;display:flex;align-items:center;justify-content:center;font-size:1.3rem;font-weight:700;flex-shrink:0"><?= $initial ?></div>
+      <div class="flex-grow-1">
+        <h2 class="mb-0" style="font-size:1.1rem;font-weight:700;color:var(--text-dark)"><?= h($fullName) ?></h2>
+        <div class="text-muted small">LRN: <?= h((string)$student['lrn']) ?> &middot; Grade <?= h((string)$student['grade_level']) ?>-<?= h((string)$student['section']) ?></div>
+      </div>
+      <?php
+        $svStatus = (string)$student['status'];
+        $svBadge = match($svStatus) { 'Active' => 'text-bg-success', 'Inactive' => 'text-bg-secondary', default => 'text-bg-warning' };
+      ?>
+      <span class="badge <?= $svBadge ?>"><?= h($svStatus) ?></span>
+    </div>
     <div class="row g-3">
-      <div class="col-md-6">
-        <div class="text-muted">Name</div>
-        <div class="fw-semibold"><?= h($fullName) ?></div>
-      </div>
       <div class="col-md-3">
-        <div class="text-muted">LRN</div>
-        <div class="fw-semibold"><?= h((string)$student['lrn']) ?></div>
-      </div>
-      <div class="col-md-3">
-        <div class="text-muted">Grade-Section</div>
-        <div class="fw-semibold"><?= h((string)$student['grade_level'] . '-' . (string)$student['section']) ?></div>
-      </div>
-      <div class="col-md-3">
-        <div class="text-muted">Sex</div>
+        <div class="text-muted small">Sex</div>
         <div class="fw-semibold"><?= h((string)$student['sex']) ?></div>
       </div>
       <div class="col-md-3">
-        <div class="text-muted">Status</div>
-        <div class="fw-semibold"><?= h((string)$student['status']) ?></div>
+        <div class="text-muted small">Grade-Section</div>
+        <div class="fw-semibold"><?= h((string)$student['grade_level'] . '-' . (string)$student['section']) ?></div>
       </div>
       <div class="col-md-6">
-        <div class="text-muted">QR Token</div>
-        <div class="fw-semibold"><code><?= h((string)$student['qr_token']) ?></code></div>
+        <div class="text-muted small">QR Token</div>
+        <div class="fw-semibold"><code style="font-size:.8rem"><?= h((string)$student['qr_token']) ?></code></div>
       </div>
     </div>
   </div>

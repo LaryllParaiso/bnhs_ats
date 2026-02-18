@@ -214,7 +214,47 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if (!$errors) {
         if ($id > 0) {
-            if ($isAdmin) {
+            $currentRole = (string)($_SESSION['role'] ?? '');
+            if ($currentRole === 'Teacher') {
+                // Teacher: submit schedule edit as a change request
+                try {
+                    $oldData = [
+                        'subject_name' => (string)($existing['subject_name'] ?? ''),
+                        'grade_level' => (string)($existing['grade_level'] ?? ''),
+                        'section' => (string)($existing['section'] ?? ''),
+                        'day_of_week' => (string)($existing['day_of_week'] ?? ''),
+                        'start_time' => (string)($existing['start_time'] ?? ''),
+                        'end_time' => (string)($existing['end_time'] ?? ''),
+                        'room' => (string)($existing['room'] ?? ''),
+                        'school_year' => (string)($existing['school_year'] ?? ''),
+                        'status' => (string)($existing['status'] ?? ''),
+                    ];
+                    $newData = [
+                        'subject_name' => $values['subject_name'],
+                        'grade_level' => $values['grade_level'],
+                        'section' => $values['section'],
+                        'day_of_week' => $values['day_of_week'],
+                        'start_time' => $values['start_time'],
+                        'end_time' => $values['end_time'],
+                        'room' => $values['room'],
+                        'school_year' => $values['school_year'],
+                        'status' => $values['status'],
+                    ];
+                    $payload = json_encode(['old' => $oldData, 'new' => $newData], JSON_UNESCAPED_UNICODE);
+                    $stmt = $pdo->prepare(
+                        'INSERT INTO change_requests (teacher_id, request_type, target_id, payload)
+                         VALUES (:teacher_id, "schedule_edit", :target_id, :payload)'
+                    );
+                    $stmt->execute([
+                        ':teacher_id' => $teacherId,
+                        ':target_id' => $id,
+                        ':payload' => $payload,
+                    ]);
+                    redirect('schedules.php?requested=edit');
+                } catch (Throwable $e) {
+                    $errors[] = 'Failed to submit schedule edit request.';
+                }
+            } elseif ($isAdmin) {
                 $stmt = $pdo->prepare(
                     'UPDATE schedules
                      SET teacher_id = :teacher_id,
@@ -242,34 +282,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     ':school_year' => $values['school_year'],
                     ':status' => $values['status'],
                     ':id' => $id,
-                ]);
-            } else {
-                $stmt = $pdo->prepare(
-                    'UPDATE schedules
-                     SET subject_name = :subject_name,
-                         grade_level = :grade_level,
-                         section = :section,
-                         day_of_week = :day_of_week,
-                         start_time = :start_time,
-                         end_time = :end_time,
-                         room = :room,
-                         school_year = :school_year,
-                         status = :status
-                     WHERE schedule_id = :id AND teacher_id = :teacher_id'
-                );
-
-                $stmt->execute([
-                    ':subject_name' => $values['subject_name'],
-                    ':grade_level' => (int)$values['grade_level'],
-                    ':section' => $values['section'],
-                    ':day_of_week' => $values['day_of_week'],
-                    ':start_time' => $values['start_time'],
-                    ':end_time' => $values['end_time'],
-                    ':room' => $values['room'] !== '' ? $values['room'] : null,
-                    ':school_year' => $values['school_year'],
-                    ':status' => $values['status'],
-                    ':id' => $id,
-                    ':teacher_id' => $teacherId,
                 ]);
             }
         } else {

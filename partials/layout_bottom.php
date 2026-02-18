@@ -1,4 +1,8 @@
 </div>
+<?php if (isset($_SESSION['teacher_id']) && strpos(trim((string)($bodyClass ?? '')), 'bnhs-hide-nav') === false): ?>
+</main>
+<?php endif; ?>
+
 <div id="bnhsLoadingOverlay" class="bnhs-loading-overlay d-none" aria-hidden="true">
   <div class="spinner-border text-light" role="status" aria-hidden="true"></div>
   <div class="mt-3 text-white fw-semibold">Loading...</div>
@@ -22,10 +26,46 @@
     const toastHost = document.getElementById('bnhsToastHost');
     const overlay = document.getElementById('bnhsLoadingOverlay');
 
-    function updateNavMetrics() {
-      const nav = document.querySelector('.bnhs-sticky-nav');
-      const h = nav ? nav.getBoundingClientRect().height : 0;
-      document.documentElement.style.setProperty('--bnhs-nav-height', Math.round(h) + 'px');
+    // Sidebar toggle logic
+    var sidebar = document.getElementById('bnhsSidebar');
+    var sidebarOverlay = document.getElementById('sidebarOverlay');
+    var sidebarToggle = document.getElementById('sidebarToggle');
+
+    function openSidebar() {
+      if (!sidebar) return;
+      sidebar.classList.add('open');
+      if (sidebarOverlay) sidebarOverlay.classList.add('open');
+      document.body.classList.add('bnhs-sidebar-open');
+    }
+
+    function closeSidebar() {
+      if (!sidebar) return;
+      sidebar.classList.remove('open');
+      if (sidebarOverlay) sidebarOverlay.classList.remove('open');
+      document.body.classList.remove('bnhs-sidebar-open');
+    }
+
+    if (sidebarToggle) {
+      sidebarToggle.addEventListener('click', function () {
+        if (sidebar && sidebar.classList.contains('open')) {
+          closeSidebar();
+        } else {
+          openSidebar();
+        }
+      });
+    }
+
+    if (sidebarOverlay) {
+      sidebarOverlay.addEventListener('click', closeSidebar);
+    }
+
+    // Close sidebar on nav link click (mobile)
+    if (sidebar) {
+      sidebar.querySelectorAll('.bnhs-sidebar-link').forEach(function (link) {
+        link.addEventListener('click', function () {
+          if (window.innerWidth < 768) closeSidebar();
+        });
+      });
     }
 
     window.bnhsToast = function (type, message) {
@@ -53,7 +93,6 @@
     };
 
     document.addEventListener('DOMContentLoaded', function () {
-      updateNavMetrics();
       if (typeof window.bnhsToast !== 'function') return;
 
       const map = [
@@ -189,17 +228,96 @@
       });
     });
 
-    window.addEventListener('resize', function () {
-      updateNavMetrics();
-    });
+    // Notification polling
+    var notifBell = document.getElementById('notifBell');
+    var notifBadge = document.getElementById('notifBadge');
+    var notifList = document.getElementById('notifList');
+    var notifMarkRead = document.getElementById('notifMarkRead');
+    var notifPollUrl = (document.querySelector('meta[name="base-url"]') || {}).content;
+    if (!notifPollUrl) {
+      var scripts = document.querySelectorAll('link[href*="bicos.css"]');
+      if (scripts.length) {
+        var href = scripts[0].getAttribute('href') || '';
+        notifPollUrl = href.replace(/assets\/bicos\.css.*$/, '');
+      }
+    }
+    if (!notifPollUrl) notifPollUrl = '/';
 
-    document.addEventListener('shown.bs.collapse', function () {
-      updateNavMetrics();
-    });
+    function fetchNotifications() {
+      if (!notifBell) return;
+      fetch(notifPollUrl + 'api_poll.php?type=notifications', { credentials: 'same-origin' })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          if (!data || !data.ok) return;
 
-    document.addEventListener('hidden.bs.collapse', function () {
-      updateNavMetrics();
-    });
+          // Update badge
+          var count = data.badge || 0;
+          if (notifBadge) {
+            notifBadge.textContent = count;
+            if (count > 0) {
+              notifBadge.classList.remove('d-none');
+            } else {
+              notifBadge.classList.add('d-none');
+            }
+          }
+
+          // Update dropdown list
+          if (!notifList) return;
+          var items = data.items || [];
+          if (items.length === 0) {
+            notifList.innerHTML = '<div class="dropdown-item-text text-muted small text-center py-3">No notifications</div>';
+            return;
+          }
+
+          var html = '';
+          items.forEach(function(item) {
+            var bgClass = item.is_new ? ' bg-light' : '';
+            var dotHtml = item.is_new ? '<span class="badge bg-danger me-1" style="width:8px;height:8px;padding:0;border-radius:50%">&nbsp;</span>' : '';
+            var badgeClass = 'text-bg-' + (item.badge || 'secondary');
+            var timeStr = item.time ? '<div class="text-muted" style="font-size:0.7rem">' + escapeHtml(item.time) + '</div>' : '';
+            var url = item.url || '#';
+
+            html += '<a class="dropdown-item small py-2 border-bottom' + bgClass + '" href="' + escapeHtml(url) + '">';
+            html += '<div class="d-flex align-items-start gap-1">';
+            html += dotHtml;
+            html += '<div class="flex-grow-1">';
+            html += '<div>' + escapeHtml(item.message || '') + '</div>';
+            html += timeStr;
+            html += '</div>';
+            html += '</div>';
+            html += '</a>';
+          });
+
+          notifList.innerHTML = html;
+        })
+        .catch(function() {});
+    }
+
+    if (notifMarkRead) {
+      notifMarkRead.addEventListener('click', function() {
+        fetch(notifPollUrl + 'api_poll.php?type=notifications_seen', { credentials: 'same-origin' })
+          .then(function() {
+            if (notifBadge) {
+              notifBadge.textContent = '0';
+              notifBadge.classList.add('d-none');
+            }
+            // Remove new indicators
+            if (notifList) {
+              notifList.querySelectorAll('.bg-light').forEach(function(el) { el.classList.remove('bg-light'); });
+              notifList.querySelectorAll('.badge.bg-danger').forEach(function(el) {
+                if (el.style.width === '8px') el.remove();
+              });
+            }
+          })
+          .catch(function() {});
+      });
+    }
+
+    // Initial fetch + poll every 15 seconds
+    if (notifBell) {
+      fetchNotifications();
+      setInterval(fetchNotifications, 15000);
+    }
   })();
 </script>
 </body>

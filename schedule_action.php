@@ -35,6 +35,8 @@ if (!$schedule) {
     redirect('schedules.php');
 }
 
+$currentRole = (string)($_SESSION['role'] ?? '');
+
 if ($action === 'toggle_status') {
     $newStatus = $schedule['status'] === 'Active' ? 'Inactive' : 'Active';
 
@@ -42,24 +44,44 @@ if ($action === 'toggle_status') {
         redirect('schedules.php');
     }
 
-    if ($isAdmin) {
+    if ($currentRole === 'Teacher') {
+        // Teacher: submit as change request
+        try {
+            $payload = json_encode(['old_status' => (string)$schedule['status'], 'new_status' => $newStatus], JSON_UNESCAPED_UNICODE);
+            $stmt = $pdo->prepare(
+                'INSERT INTO change_requests (teacher_id, request_type, target_id, payload)
+                 VALUES (:teacher_id, "schedule_deactivate", :target_id, :payload)'
+            );
+            $stmt->execute([':teacher_id' => $teacherId, ':target_id' => $id, ':payload' => $payload]);
+            redirect('schedules.php?requested=deactivate');
+        } catch (Throwable $e) {
+            redirect('schedules.php');
+        }
+    } elseif ($isAdmin) {
         $stmt = $pdo->prepare('UPDATE schedules SET status = :status WHERE schedule_id = :id');
         $stmt->execute([':status' => $newStatus, ':id' => $id]);
-    } else {
-        $stmt = $pdo->prepare('UPDATE schedules SET status = :status WHERE schedule_id = :id AND teacher_id = :teacher_id');
-        $stmt->execute([':status' => $newStatus, ':id' => $id, ':teacher_id' => $teacherId]);
     }
 
     redirect('schedules.php');
 }
 
 if ($action === 'archive') {
-    if ($isAdmin) {
+    if ($currentRole === 'Teacher') {
+        // Teacher: submit as change request
+        try {
+            $payload = json_encode(['old_status' => (string)$schedule['status'], 'new_status' => 'Archived'], JSON_UNESCAPED_UNICODE);
+            $stmt = $pdo->prepare(
+                'INSERT INTO change_requests (teacher_id, request_type, target_id, payload)
+                 VALUES (:teacher_id, "schedule_archive", :target_id, :payload)'
+            );
+            $stmt->execute([':teacher_id' => $teacherId, ':target_id' => $id, ':payload' => $payload]);
+            redirect('schedules.php?requested=archive');
+        } catch (Throwable $e) {
+            redirect('schedules.php');
+        }
+    } elseif ($isAdmin) {
         $stmt = $pdo->prepare('UPDATE schedules SET status = "Archived" WHERE schedule_id = :id');
         $stmt->execute([':id' => $id]);
-    } else {
-        $stmt = $pdo->prepare('UPDATE schedules SET status = "Archived" WHERE schedule_id = :id AND teacher_id = :teacher_id');
-        $stmt->execute([':id' => $id, ':teacher_id' => $teacherId]);
     }
 
     redirect('schedules.php');

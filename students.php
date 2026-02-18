@@ -119,6 +119,14 @@ if ($students) {
     }
 }
 
+// Fetch grade/section lists for filter datalists
+$filterGrades = [];
+$filterSections = [];
+try {
+    $filterGrades = $pdo->query('SELECT DISTINCT grade_level FROM grade_sections WHERE status = "Active" ORDER BY grade_level ASC')->fetchAll(PDO::FETCH_COLUMN);
+    $filterSections = $pdo->query('SELECT DISTINCT section FROM grade_sections WHERE status = "Active" ORDER BY section ASC')->fetchAll(PDO::FETCH_COLUMN);
+} catch (Throwable $e) {}
+
 $title = 'Students';
 require __DIR__ . '/partials/layout_top.php';
 ?>
@@ -163,21 +171,24 @@ require __DIR__ . '/partials/layout_top.php';
   <div class="card-body">
     <div class="row g-3">
       <div class="col-6 col-md-4">
-        <div class="bnhs-metric">
+        <div class="bnhs-metric metric-green">
+          <div class="bnhs-metric-icon icon-green"><svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg></div>
           <div class="bnhs-metric-label">Active</div>
-          <div class="bnhs-metric-value"><?= (int)$activeCount ?></div>
+          <div class="bnhs-metric-value" id="metricActive"><?= (int)$activeCount ?></div>
         </div>
       </div>
       <div class="col-6 col-md-4">
-        <div class="bnhs-metric">
+        <div class="bnhs-metric metric-orange">
+          <div class="bnhs-metric-icon icon-orange"><svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/></svg></div>
           <div class="bnhs-metric-label">Inactive</div>
-          <div class="bnhs-metric-value"><?= (int)$inactiveCount ?></div>
+          <div class="bnhs-metric-value" id="metricInactive"><?= (int)$inactiveCount ?></div>
         </div>
       </div>
       <div class="col-12 col-md-4">
-        <div class="bnhs-metric">
+        <div class="bnhs-metric metric-blue">
+          <div class="bnhs-metric-icon icon-blue"><svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/></svg></div>
           <div class="bnhs-metric-label">Total</div>
-          <div class="bnhs-metric-value"><?= (int)$total ?></div>
+          <div class="bnhs-metric-value" id="metricStudentTotal"><?= (int)$total ?></div>
         </div>
       </div>
     </div>
@@ -186,15 +197,25 @@ require __DIR__ . '/partials/layout_top.php';
 
 <div class="card shadow-sm mb-3 bnhs-filter-card">
   <div class="card-body">
-    <form class="row g-2" method="get" action="<?= h(url('students.php')) ?>">
+    <form class="row g-2" method="get" action="<?= h(url('students.php')) ?>" id="studentsFilterForm">
       <div class="col-md-4">
         <input class="form-control" name="q" placeholder="Search LRN / Name" value="<?= h($q) ?>">
       </div>
       <div class="col-md-2">
-        <input class="form-control" name="grade" placeholder="Grade" value="<?= h($grade) ?>">
+        <input class="form-control" name="grade" placeholder="Grade" value="<?= h($grade) ?>" list="dlGrades" autocomplete="off">
+        <datalist id="dlGrades">
+          <?php foreach ($filterGrades as $fg): ?>
+            <option value="<?= h((string)$fg) ?>">
+          <?php endforeach; ?>
+        </datalist>
       </div>
       <div class="col-md-2">
-        <input class="form-control" name="section" placeholder="Section" value="<?= h($section) ?>">
+        <input class="form-control" name="section" placeholder="Section" value="<?= h($section) ?>" list="dlSections" autocomplete="off">
+        <datalist id="dlSections">
+          <?php foreach ($filterSections as $fs): ?>
+            <option value="<?= h((string)$fs) ?>">
+          <?php endforeach; ?>
+        </datalist>
       </div>
       <div class="col-md-2">
         <select class="form-select" name="status">
@@ -205,16 +226,34 @@ require __DIR__ . '/partials/layout_top.php';
         </select>
       </div>
       <div class="col-md-2 d-grid">
-        <button class="btn btn-outline-primary" type="submit">Filter</button>
+        <a class="btn btn-outline-secondary" href="<?= h(url('students.php')) ?>">Reset</a>
       </div>
     </form>
+    <script>
+    (function(){
+      var form = document.getElementById('studentsFilterForm');
+      if(!form) return;
+      var timer = null;
+      function submit(){ form.submit(); }
+      form.querySelectorAll('select').forEach(function(el){
+        el.addEventListener('change', submit);
+      });
+      form.querySelectorAll('input[list], input[type="text"], input[name="q"], input:not([type])').forEach(function(el){
+        el.addEventListener('input', function(){
+          clearTimeout(timer);
+          timer = setTimeout(submit, 600);
+        });
+        el.addEventListener('change', submit);
+      });
+    })();
+    </script>
   </div>
 </div>
 
 <div class="card shadow-sm">
   <div class="card-body p-0">
     <div class="table-responsive">
-      <table class="table table-striped mb-0">
+      <table class="table table-striped mb-0" id="studentsTable">
         <thead>
           <tr>
             <th>LRN</th>
@@ -227,7 +266,7 @@ require __DIR__ . '/partials/layout_top.php';
             <th class="text-end">Actions</th>
           </tr>
         </thead>
-        <tbody>
+        <tbody id="studentsTbody">
           <?php if (!$students): ?>
             <tr>
               <td colspan="8" class="p-0">
@@ -263,10 +302,11 @@ require __DIR__ . '/partials/layout_top.php';
                   $absCount = (int)($attendanceCounts[$sid]['total_absent'] ?? 0);
                   $lateCount = (int)($attendanceCounts[$sid]['total_late'] ?? 0);
                 ?>
-                <td><?= h((string)$s['status']) ?></td>
+                <td><span class="bnhs-status-dot <?= strtolower((string)$s['status']) ?>"></span><?= h((string)$s['status']) ?></td>
                 <td class="text-center"><?= $absCount ?></td>
                 <td class="text-center"><?= $lateCount ?></td>
                 <td class="text-end">
+                  <div class="bnhs-actions">
                   <a class="btn btn-sm btn-outline-secondary" href="<?= h(url('student_view.php?id=' . (int)$s['student_id'])) ?>">View</a>
                   <a class="btn btn-sm btn-outline-primary" href="<?= h(url('student_form.php?id=' . (int)$s['student_id'])) ?>">Edit</a>
                   <?php if ($s['status'] === 'Active'): ?>
@@ -279,6 +319,7 @@ require __DIR__ . '/partials/layout_top.php';
                     <input type="hidden" name="id" value="<?= h((string)$s['student_id']) ?>">
                     <button class="btn btn-sm btn-outline-danger" type="submit">Delete</button>
                   </form>
+                  </div>
                 </td>
               </tr>
             <?php endforeach; ?>
@@ -289,11 +330,84 @@ require __DIR__ . '/partials/layout_top.php';
   </div>
   <div class="d-flex justify-content-between align-items-center p-2 border-top">
     <div class="text-muted small">
-      Showing <?= (int)$pg['from'] ?>-<?= (int)$pg['to'] ?> of <?= (int)$pg['total'] ?>
+      <span id="studentsPagInfo">Showing <?= (int)$pg['from'] ?>-<?= (int)$pg['to'] ?> of <?= (int)$pg['total'] ?></span>
     </div>
     <?= pagination_html('students.php', $_GET, (int)$pg['page'], (int)$pg['per_page'], (int)$pg['total']) ?>
   </div>
 </div>
+
+<script>
+(function(){
+  var POLL_INTERVAL = 5000;
+  var baseUrl = <?= json_encode(url('api_poll.php')) ?>;
+  var currentParams = <?= json_encode(array_filter([
+      'type' => 'students',
+      'q' => $q,
+      'grade' => $grade,
+      'section' => $section,
+      'status' => $status,
+      'page' => (string)$page,
+  ])) ?>;
+
+  function escH(s){ var d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
+
+  function poll(){
+    var qs = new URLSearchParams(currentParams).toString();
+    fetch(baseUrl + '?' + qs, {headers:{'X-Requested-With':'XMLHttpRequest'}})
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        if(!d.ok) return;
+        var m = d.metrics;
+        var el;
+        el = document.getElementById('metricActive'); if(el) el.textContent = m.active;
+        el = document.getElementById('metricInactive'); if(el) el.textContent = m.inactive;
+        el = document.getElementById('metricStudentTotal'); if(el) el.textContent = m.total;
+
+        var tbody = document.getElementById('studentsTbody');
+        if(tbody && d.rows){
+          var html = '';
+          if(d.rows.length === 0){
+            html = '<tr><td colspan="8" class="p-0"><div class="bnhs-empty-state">No students found.</div></td></tr>';
+          } else {
+            d.rows.forEach(function(r){
+              html += '<tr>';
+              html += '<td>' + escH(r.lrn) + '</td>';
+              html += '<td>' + escH(r.name) + '</td>';
+              html += '<td>' + escH(r.grade_section) + '</td>';
+              html += '<td>' + escH(r.sex) + '</td>';
+              html += '<td>' + escH(r.status) + '</td>';
+              html += '<td class="text-center">' + r.total_absent + '</td>';
+              html += '<td class="text-center">' + r.total_late + '</td>';
+              html += '<td class="text-end">';
+              html += '<a class="btn btn-sm btn-outline-secondary" href="' + escH(r.view_url) + '">View</a> ';
+              html += '<a class="btn btn-sm btn-outline-primary" href="' + escH(r.edit_url) + '">Edit</a> ';
+              if(r.status === 'Active'){
+                html += '<form class="d-inline" method="post" action="' + escH(r.archive_url) + '" data-confirm="Archive this student?" data-confirm-title="Archive Student" data-confirm-ok="Archive" data-confirm-cancel="Cancel" data-confirm-icon="warning">';
+                html += '<input type="hidden" name="id" value="' + r.student_id + '">';
+                html += '<button class="btn btn-sm btn-outline-warning" type="submit">Archive</button>';
+                html += '</form> ';
+              }
+              html += '<form class="d-inline" method="post" action="' + escH(r.delete_url) + '" data-confirm="Delete this student permanently?" data-confirm-title="Delete Student" data-confirm-ok="Delete" data-confirm-cancel="Cancel" data-confirm-icon="danger">';
+              html += '<input type="hidden" name="id" value="' + r.student_id + '">';
+              html += '<button class="btn btn-sm btn-outline-danger" type="submit">Delete</button>';
+              html += '</form>';
+              html += '</td></tr>';
+            });
+          }
+          tbody.innerHTML = html;
+        }
+
+        var pInfo = document.getElementById('studentsPagInfo');
+        if(pInfo && d.pagination){
+          pInfo.textContent = 'Showing ' + d.pagination.from + '-' + d.pagination.to + ' of ' + d.pagination.total;
+        }
+      })
+      .catch(function(){});
+  }
+
+  setInterval(poll, POLL_INTERVAL);
+})();
+</script>
 
 <?php
 require __DIR__ . '/partials/layout_bottom.php';

@@ -122,6 +122,11 @@ require __DIR__ . '/partials/layout_top.php';
 
 <div class="row justify-content-center">
   <div class="col-md-7 col-lg-6">
+    <div class="text-center mb-4">
+      <img src="<?= h(url('ui_ux_design/bicos%20logo.png')) ?>" alt="BNHS Logo" style="width:56px;height:56px;border-radius:50%;box-shadow:0 4px 16px rgba(0,0,0,.1)">
+      <h2 class="mt-3 mb-1" style="font-size:1rem;font-weight:700;color:var(--primary-navy)">Bicos National High School</h2>
+      <p class="text-muted small mb-0">Attendance Tracking System</p>
+    </div>
     <div class="card shadow-sm">
       <div class="card-body">
         <h1 class="bnhs-page-title mb-3">Teacher Registration</h1>

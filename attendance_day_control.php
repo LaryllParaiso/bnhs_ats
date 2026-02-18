@@ -6,7 +6,7 @@ require_once __DIR__ . '/lib/auth.php';
 
 require_login();
 
-if ((string)($_SESSION['role'] ?? '') !== 'Admin') {
+if (!in_array((string)($_SESSION['role'] ?? ''), ['Admin', 'Super Admin'], true)) {
     redirect('attendance_records.php');
 }
 

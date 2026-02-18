@@ -117,7 +117,8 @@ if ($studentIds) {
     $totSql = "SELECT student_id,
                       SUM(CASE WHEN status = 'Absent' THEN 1 ELSE 0 END) AS total_absent,
                       SUM(CASE WHEN status = 'Present' THEN 1 ELSE 0 END) AS total_present,
-                      SUM(CASE WHEN status = 'Late' THEN 1 ELSE 0 END) AS total_late
+                      SUM(CASE WHEN status = 'Late' THEN 1 ELSE 0 END) AS total_late,
+                      SUM(CASE WHEN status = 'Suspended' THEN 1 ELSE 0 END) AS total_suspended
                FROM attendance
                WHERE student_id IN ($inPh) AND date BETWEEN ? AND ?
                GROUP BY student_id";
@@ -393,6 +394,9 @@ function exportExcel(array $allStudents, array $males, array $females, array $sc
     $currentRow++;
     $sheet->setCellValue("A{$currentRow}", '2. Dates shall be written in the columns after Learner\'s Name.');
     $sheet->getStyle("A{$currentRow}")->getFont()->setSize(8);
+    $currentRow++;
+    $sheet->setCellValue("A{$currentRow}", 'CODES: (blank) = Present | A = Absent | L = Late | S = Suspended / No Class');
+    $sheet->getStyle("A{$currentRow}")->getFont()->setSize(8);
 
     $fileName = 'SF2_' . date('Y') . '_' . str_replace(' ', '_', $gradeLevelText ?: 'All') . '_' . $sectionLabel . '.xlsx';
 
@@ -439,10 +443,15 @@ function writeStudentRows(
                 $mark = 'A';
             } elseif ($st === 'Late') {
                 $mark = 'L';
+            } elseif ($st === 'Suspended') {
+                $mark = 'S';
             }
             if ($mark !== '') {
                 $sheet->setCellValue("{$col}{$row}", $mark);
                 $sheet->getStyle("{$col}{$row}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                if ($st === 'Suspended') {
+                    $sheet->getStyle("{$col}{$row}")->getFont()->getColor()->setRGB('888888');
+                }
             }
         }
 
@@ -573,7 +582,14 @@ function exportPdf(array $allStudents, array $males, array $females, array $scho
                 $mark = '';
                 if ($st === 'Absent') $mark = 'A';
                 elseif ($st === 'Late') $mark = 'L';
+                elseif ($st === 'Suspended') $mark = 'S';
+                if ($st === 'Suspended') {
+                    $pdf->SetTextColor(136, 136, 136);
+                }
                 $pdf->Cell($dayColW, 5, $mark, 1, 0, 'C');
+                if ($st === 'Suspended') {
+                    $pdf->SetTextColor(0, 0, 0);
+                }
             }
 
             $absent = (int)($attendanceTotals[$sid]['total_absent'] ?? 0);
@@ -649,7 +665,7 @@ function exportPdf(array $allStudents, array $males, array $females, array $scho
     $pdf->SetFont('helvetica', 'B', 8);
     $pdf->Cell($pageW, 5, 'CODES FOR CHECKING ATTENDANCE', 0, 1, 'L');
     $pdf->SetFont('helvetica', '', 7);
-    $pdf->Cell($pageW, 4, '(blank) - Present; (A) - Absent; (L) - Late (half-width Upper for Late Corner, Lower for Cutting Classes)', 0, 1, 'L');
+    $pdf->Cell($pageW, 4, '(blank) - Present; (A) - Absent; (L) - Late; (S) - Suspended / No Class', 0, 1, 'L');
 
     $pdf->Ln(5);
     $pdf->SetFont('helvetica', '', 7);

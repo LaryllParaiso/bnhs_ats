@@ -99,7 +99,7 @@ require __DIR__ . '/partials/layout_top.php';
     <?php endif; ?>
 
     <div class="card shadow-sm">
-      <div class="card-body">
+      <div class="card-body" id="approvalsContent">
         <?php if (!$pending): ?>
           <div class="bnhs-empty-state">
             <div class="bnhs-empty-icon" aria-hidden="true">
@@ -114,7 +114,7 @@ require __DIR__ . '/partials/layout_top.php';
           </div>
         <?php else: ?>
           <div class="table-responsive">
-            <table class="table table-sm align-middle">
+            <table class="table table-sm align-middle" id="approvalsTable">
               <thead>
                 <tr>
                   <th>Employee ID</th>
@@ -126,7 +126,7 @@ require __DIR__ . '/partials/layout_top.php';
                   <th class="text-end">Action</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody id="approvalsTbody">
                 <?php foreach ($pending as $t): ?>
                   <?php
                     $name = trim((string)$t['first_name'] . ' ' . (string)$t['last_name']);
@@ -160,6 +160,62 @@ require __DIR__ . '/partials/layout_top.php';
     </div>
   </div>
 </div>
+
+<script>
+(function(){
+  var POLL_INTERVAL = 5000;
+  var baseUrl = <?= json_encode(url('api_poll.php')) ?>;
+  var actionUrl = <?= json_encode(url('teacher_approvals.php')) ?>;
+
+  function escH(s){ var d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
+
+  function poll(){
+    fetch(baseUrl + '?type=approvals', {headers:{'X-Requested-With':'XMLHttpRequest'}})
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        if(!d.ok) return;
+        var container = document.getElementById('approvalsContent');
+        if(!container) return;
+
+        if(d.rows.length === 0){
+          container.innerHTML = '<div class="bnhs-empty-state">No pending teacher registrations.</div>';
+          return;
+        }
+
+        var html = '<div class="table-responsive">';
+        html += '<table class="table table-sm align-middle" id="approvalsTable"><thead><tr>';
+        html += '<th>Employee ID</th><th>Name</th><th>Sex</th><th>Email</th><th>Department</th><th>Registered</th><th class="text-end">Action</th>';
+        html += '</tr></thead><tbody id="approvalsTbody">';
+        d.rows.forEach(function(r){
+          html += '<tr>';
+          html += '<td>' + escH(r.employee_id) + '</td>';
+          html += '<td>' + escH(r.name) + '</td>';
+          html += '<td>' + escH(r.sex) + '</td>';
+          html += '<td>' + escH(r.email) + '</td>';
+          html += '<td>' + escH(r.department) + '</td>';
+          html += '<td>' + escH(r.created_at) + '</td>';
+          html += '<td class="text-end">';
+          html += '<form method="post" class="d-inline" action="' + escH(actionUrl) + '" data-confirm="Approve this registration?" data-confirm-title="Approve Registration" data-confirm-ok="Approve" data-confirm-cancel="Cancel" data-confirm-icon="question">';
+          html += '<input type="hidden" name="teacher_id" value="' + r.teacher_id + '">';
+          html += '<input type="hidden" name="action" value="approve">';
+          html += '<button type="submit" class="btn btn-success btn-sm">Approve</button>';
+          html += '</form> ';
+          html += '<form method="post" class="d-inline" action="' + escH(actionUrl) + '" data-confirm="Decline this registration?" data-confirm-title="Decline Registration" data-confirm-ok="Decline" data-confirm-cancel="Cancel" data-confirm-icon="warning">';
+          html += '<input type="hidden" name="teacher_id" value="' + r.teacher_id + '">';
+          html += '<input type="hidden" name="action" value="decline">';
+          html += '<button type="submit" class="btn btn-outline-danger btn-sm">Decline</button>';
+          html += '</form>';
+          html += '</td></tr>';
+        });
+        html += '</tbody></table></div>';
+        container.innerHTML = html;
+      })
+      .catch(function(){});
+  }
+
+  setInterval(poll, POLL_INTERVAL);
+})();
+</script>
 
 <?php
 require __DIR__ . '/partials/layout_bottom.php';

@@ -1,5 +1,6 @@
 vendor/
 config/*.php
+!config/config.example.php
 .env
 node_modules/
 .vscode/

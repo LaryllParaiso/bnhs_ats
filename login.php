@@ -97,6 +97,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $baseName = trim((string)$teacher['first_name'] . ' ' . (string)$teacher['last_name']);
                     $_SESSION['teacher_name'] = $suffix !== '' ? ($baseName . ', ' . $suffix) : $baseName;
                     $_SESSION['grade_levels_taught'] = (string)($teacher['grade_levels_taught'] ?? '');
+                    $_SESSION['notif_seen_at'] = (string)($teacher['notif_seen_at'] ?? '');
                     $_SESSION['last_activity'] = time();
 
                     redirect('attendance_records.php');
@@ -110,8 +111,13 @@ $title = 'Teacher Login';
 require __DIR__ . '/partials/layout_top.php';
 ?>
 
-<div class="row justify-content-center">
-  <div class="col-md-6 col-lg-5">
+<div class="row justify-content-center align-items-center" style="min-height:calc(100vh - 120px)">
+  <div class="col-md-6 col-lg-5 col-xl-4">
+    <div class="text-center mb-4">
+      <img src="<?= h(url('ui_ux_design/bicos%20logo.png')) ?>" alt="BNHS Logo" style="width:64px;height:64px;border-radius:50%;box-shadow:0 4px 16px rgba(0,0,0,.1)">
+      <h2 class="mt-3 mb-1" style="font-size:1.1rem;font-weight:700;color:var(--primary-navy)">Bicos National High School</h2>
+      <p class="text-muted small mb-0">Attendance Tracking System</p>
+    </div>
     <div class="card shadow-sm">
       <div class="card-body">
         <h1 class="bnhs-page-title mb-3">Teacher Login</h1>
